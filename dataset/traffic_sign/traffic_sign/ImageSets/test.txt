@@ -1,0 +1,11 @@
+/shared/traffic_sign/JPEGImages/image_305.jpg
+/shared/traffic_sign/JPEGImages/image_34.jpg
+/shared/traffic_sign/JPEGImages/image_157.jpg
+/shared/traffic_sign/JPEGImages/image_272.jpg
+/shared/traffic_sign/JPEGImages/image_307.jpg
+/shared/traffic_sign/JPEGImages/image_302.jpg
+/shared/traffic_sign/JPEGImages/image_317.jpg
+/shared/traffic_sign/JPEGImages/image_185.jpg
+/shared/traffic_sign/JPEGImages/image_279.jpg
+/shared/traffic_sign/JPEGImages/image_291.jpg
+/shared/traffic_sign/JPEGImages/image_202.jpg

@@ -1,0 +1,7 @@
+names:
+- straight
+- right
+- parking
+nc: 3
+train: /shared/traffic_sign/ImageSets/train.txt
+val: /shared/traffic_sign/ImageSets/val.txt
