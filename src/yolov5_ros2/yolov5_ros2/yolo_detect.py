@@ -111,6 +111,7 @@ class YoloV5Ros2(Node):
         scores = predictions[:, 4]
         categories = predictions[:, 5]
 
+        objects_info = []
         for index in range(len(categories)):
             name = detect_result.names[int(categories[index])]
             detection2d = Detection2D()
@@ -149,7 +150,6 @@ class YoloV5Ros2(Node):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 cv2.waitKey(1)
 
-            objects_info = []
             h, w = image.shape[:2]
 
             object_info = ObjectInfo()
