@@ -117,7 +117,7 @@ class SelfDrivingNode(Node):
 
         self.start_slow_down = False  # slowing down sign
 
-        self.normal_speed = 0.5  # normal driving speed
+        self.normal_speed = 0.2  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -128,7 +128,7 @@ class SelfDrivingNode(Node):
         self.objects_info = []
 
         # --- Y-기반 턴 트리거 튜닝 파라미터 ---
-        self.y_turn_ratio = 0.75       # 화면 높이의 하단 25% 임계 (0.70~0.90에서 조정)
+        self.y_turn_ratio = 0.70       # 화면 높이의 하단 25% 임계 (0.70~0.90에서 조정)
         self.band_density_th = 0.02    # 하단 밴드 픽셀 밀도 임계(1~5% 추천)
         self.turn_frames_req = 6       # 연속 프레임 수(>5와 동일 의미)
         self.turn_hold_sec = 2.0       # 턴 유지 시간(초)
