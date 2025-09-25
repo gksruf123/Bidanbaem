@@ -116,7 +116,11 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
+<<<<<<< HEAD
         self.normal_speed = 0.3  # normal driving speed
+=======
+        self.normal_speed = 0.8  # normal driving speed
+>>>>>>> 0763af8 (chore: test different autonomous driving speed value)
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
