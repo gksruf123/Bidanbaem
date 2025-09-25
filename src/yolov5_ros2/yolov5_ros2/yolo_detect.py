@@ -12,6 +12,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
 import yaml
+import message_filters
 #from sdk import common
 
 from yolov5_ros2.cv_tool import px2xy
@@ -62,9 +63,13 @@ class YoloV5Ros2(Node):
         self.result_img_pub = self.create_publisher(Image, "result_img", 10)
 
         # Create an image subscriber with the updated topic.
-        image_topic = self.get_parameter('image_topic').value
-        self.image_sub = self.create_subscription(
-            Image, image_topic, self.image_callback, 10)
+        # image_topic = self.get_parameter('image_topic').value
+        # self.image_sub = self.create_subscription(
+        #     Image, image_topic, self.image_callback, 10)
+        rgb_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image')
+        depth_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw')
+        ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=10, slop=0.05)
+        ts.registerCallback(self.image_callback)
 
         # Image format conversion (using cv_bridge).
         self.bridge = CvBridge()
@@ -90,9 +95,10 @@ class YoloV5Ros2(Node):
         response.message = "stop"
         return response
 
-    def image_callback(self, msg: Image):
+    def image_callback(self, rgb_msg, depth_msg):
         # 5. Detect and publish results.
-        image = self.bridge.imgmsg_to_cv2(msg, "rgb8")
+        image = self.bridge.imgmsg_to_cv2(rgb_msg, "rgb8")
+        depth = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')
         detect_result = self.yolov5.predict(image)
 
         self.result_msg.detections.clear()
@@ -116,6 +122,8 @@ class YoloV5Ros2(Node):
             y2 = int(y2)
             center_x = (x1 + x2) / 2.0
             center_y = (y1 + y2) / 2.0
+
+            box_distance = depth[int(center_y), int(center_x)]
 
             if ros_distribution == 'galactic':
                 detection2d.bbox.center.x = center_x
@@ -150,11 +158,12 @@ class YoloV5Ros2(Node):
             object_info.score = round(float(scores[index]), 2)
             object_info.width = w
             object_info.height = h
+            object_info.distance = float(box_distance)
             objects_info.append(object_info)
 
-            object_msg = ObjectsInfo()
-            object_msg.objects = objects_info
-            self.object_pub.publish(object_msg)
+        object_msg = ObjectsInfo()
+        object_msg.objects = objects_info
+        self.object_pub.publish(object_msg)
 
         # Display results if needed.
         if self.show_result:
@@ -165,7 +174,7 @@ class YoloV5Ros2(Node):
 
         if self.pub_result_img:
             result_img_msg = self.bridge.cv2_to_imgmsg(image, encoding="rgb8")
-            result_img_msg.header = msg.header
+            result_img_msg.header = rgb_msg.header
             self.result_img_pub.publish(result_img_msg)
         if len(categories) > 0:
             self.yolo_result_pub.publish(self.result_msg)
