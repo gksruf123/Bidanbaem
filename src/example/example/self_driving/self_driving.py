@@ -26,6 +26,9 @@ from example.self_driving import lane_detect
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from ros_robot_controller_msgs.msg import BuzzerState, SetPWMServoState, PWMServoState
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu
+
 
 class SelfDrivingNode(Node):
     def __init__(self, name):
@@ -113,7 +116,7 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.8  # normal driving speed
+        self.normal_speed = 0.3  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -122,6 +125,14 @@ class SelfDrivingNode(Node):
         self.object_sub = None
         self.image_sub = None
         self.objects_info = []
+
+        # --- Y-기반 턴 트리거 튜닝 파라미터 ---
+        self.y_turn_ratio = 0.75       # 화면 높이의 하단 25% 임계 (0.70~0.90에서 조정)
+        self.band_density_th = 0.02    # 하단 밴드 픽셀 밀도 임계(1~5% 추천)
+        self.turn_frames_req = 6       # 연속 프레임 수(>5와 동일 의미)
+        self.turn_hold_sec = 2.0       # 턴 유지 시간(초)
+        self.turn_linear_limit = 0.08  # 턴 중 최대 직진 속도(안정화)
+        self.rotating = False
 
     def get_node_state(self, request, response):
         response.success = True
@@ -137,23 +148,30 @@ class SelfDrivingNode(Node):
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving enter")
         with self.lock:
             self.start = False
-            camera = 'depth_cam'#self.get_parameter('depth_camera_name').value
-            self.create_subscription(Image, '/ascamera/camera_publisher/rgb0/image' , self.image_callback, 1)
-            self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.get_object_callback, 1)
+            # 구독 핸들을 멤버에 저장해서 GC로 사라지지 않게 함
+            self.image_sub = self.create_subscription(
+                Image, '/ascamera/camera_publisher/rgb0/image', self.image_callback, 1
+            )
+            self.object_sub = self.create_subscription(
+                ObjectsInfo, '/yolov5_ros2/object_detect', self.get_object_callback, 1
+            )
             self.mecanum_pub.publish(Twist())
             self.enter = True
         response.success = True
         response.message = "enter"
         return response
 
+
     def exit_srv_callback(self, request, response):
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving exit")
         with self.lock:
             try:
                 if self.image_sub is not None:
-                    self.image_sub.unregister()
+                    self.destroy_subscription(self.image_sub)
+                    self.image_sub = None
                 if self.object_sub is not None:
-                    self.object_sub.unregister()
+                    self.destroy_subscription(self.object_sub)
+                    self.object_sub = None
             except Exception as e:
                 self.get_logger().info('\033[1;32m%s\033[0m' % str(e))
             self.mecanum_pub.publish(Twist())
@@ -227,8 +245,126 @@ class SelfDrivingNode(Node):
             time.sleep(1.5)
         self.mecanum_pub.publish(Twist())
 
+    # --- Quaternion -> yaw(rad) 유틸 ---
+    def _yaw_from_quat(self, q):
+        # geometry_msgs/Quaternion -> yaw
+        # 참고: yaw 범위는 [-pi, pi]
+        siny_cosp = 2.0 * (q.w*q.z + q.x*q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y*q.y + q.z*q.z)
+        return math.atan2(siny_cosp, cosy_cosp)
+
+    # --- 옵션 A: 오픈 루프(간단/캘리브 필요) ---
+    def rotate_right_90_in_place(self, yaw_rate=0.8):
+        """
+        제자리에서 시계방향(오른쪽) 90도 회전.
+        yaw_rate: rad/s. 실제 90°가 맞지 않으면 yaw_rate나 duration을 조정.
+        """
+        self.rotating = True   # <-- 회전 시작
+        twist = Twist()
+        twist.linear.x = twist.linear.y = twist.linear.z = 0.0
+        twist.angular.x = twist.angular.y = 0.0
+        twist.angular.z = -abs(yaw_rate)  # 보통 오른쪽(시계)은 음수
+
+        angle = math.pi / 2  # 90°
+        duration = angle / abs(yaw_rate)
+
+        t0 = time.time()
+        while time.time() - t0 < duration and self.is_running:
+            self.mecanum_pub.publish(twist)
+            time.sleep(0.02)
+
+        self.mecanum_pub.publish(Twist())
+        self.rotating = False  # <-- 회전 끝
+
+
+    # --- 옵션 B: 피드백 루프(정확/권장) ---
+    def rotate_right_90_feedback(self, source="odom", max_rate=1.0, min_rate=0.2, timeout=5.0):
+        """
+        /odom 또는 /imu의 yaw로 -90° 도달까지 제자리 회전.
+        source: "odom" | "imu"
+        max_rate/min_rate: 각속도 제한
+        """
+        yaw_now = None
+        self.rotating = True   # <-- 회전 시작
+        
+
+        def odom_cb(msg):
+            nonlocal yaw_now
+            yaw_now = self._yaw_from_quat(msg.pose.pose.orientation)
+
+        def imu_cb(msg):
+            nonlocal yaw_now
+            yaw_now = self._yaw_from_quat(msg.orientation)
+
+        # 구독 시작
+        if source == "odom":
+            sub = self.create_subscription(Odometry, "/odom", odom_cb, 1)
+        else:
+            sub = self.create_subscription(Imu, "/imu", imu_cb, 1)
+
+        # 초기 yaw 확보
+        t0 = time.time()
+        while yaw_now is None and (time.time() - t0) < 1.0:
+            rclpy.spin_once(self, timeout_sec=0.05)
+
+        if yaw_now is None:
+            self.get_logger().warn("Yaw source not available; fallback to open-loop 90°.")
+            try:
+                self.destroy_subscription(sub)
+            except Exception:
+                pass
+            return self.rotate_right_90_in_place(0.8)
+
+        yaw_start = yaw_now
+        target_delta = -math.pi / 2  # 오른쪽 90도
+        Kp = 1.2  # 필요 시 튜닝
+
+        twist = Twist()
+        twist.linear.x = twist.linear.y = 0.0  # 제자리 회전
+
+        t0 = time.time()
+        while (time.time() - t0) < timeout and self.is_running:
+            rclpy.spin_once(self, timeout_sec=0.01)
+            if yaw_now is None:
+                continue
+
+            # 현재 진행된 각도(−pi~pi wrap)
+            delta = ((yaw_now - yaw_start + math.pi) % (2*math.pi)) - math.pi
+            err = target_delta - delta
+
+            # P제어 각속도
+            w_cmd = Kp * err
+            # 제한 + 최소 속도 보장
+            w_cmd = max(-max_rate, min(max_rate, w_cmd))
+            if abs(w_cmd) < min_rate:
+                w_cmd = -min_rate if err < 0 else min_rate
+
+            twist.angular.z = w_cmd
+            self.mecanum_pub.publish(twist)
+
+            # 오차 임계 도달 시 종료
+            if abs(err) < math.radians(2.0):  # ±2°
+                break
+
+            time.sleep(0.01)
+
+        self.mecanum_pub.publish(Twist())
+
+        # 필요 시 구독 해제
+        try:
+            self.destroy_subscription(sub)
+        except Exception:
+            pass
+
+        self.rotating = False  # <-- 회전 끝
+
     def main(self):
         while self.is_running:
+            if self.rotating:
+                # 회전 중에는 다른 주행 명령을 막고 정지 유지
+                self.mecanum_pub.publish(Twist())
+                time.sleep(0.01)
+                continue
             time_start = time.time()
             try:
                 image = self.image_queue.get(block=True, timeout=1)
@@ -288,38 +424,93 @@ class SelfDrivingNode(Node):
                     else:
                         self.count_park = 0  
 
-                # line following processing
-                result_image, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
-                if lane_x >= 0 and not self.stop:  
-                    if lane_x > 150:  
+                # line following processing (Y-기반 턴 트리거)
+                result_image, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())
+
+                if not self.stop:
+                    # 1) 하단 근접도 계산: 이진 이미지에서 가장 아래쪽(y_max)과 하단 밴드 밀도
+                    h, w = image.shape[:2]
+                    ys, xs = np.where(binary_image > 0)
+                    y_max = int(ys.max()) if ys.size > 0 else -1
+
+                    y_turn_th = int(h * self.y_turn_ratio)   # 예: h*0.75
+                    band = binary_image[y_turn_th:, :]
+                    band_density = (np.count_nonzero(band) / band.size) if band.size > 0 else 0.0
+                    band_dense_enough = band_density > self.band_density_th
+
+                    # --- 턴 트리거: 노란 선이 화면 하단 임계선 아래로 내려오고, 하단 밴드가 충분히 채워졌을 때 ---
+                    turn_trigger = (y_max >= y_turn_th) and band_dense_enough
+
+                    if turn_trigger:
+                        # 여러 프레임 연속일 때만 턴 모드 진입 (노이즈 방지)
                         self.count_turn += 1
-                        if self.count_turn > 5 and not self.start_turn:
+                        if self.count_turn >= self.turn_frames_req and not self.start_turn:
                             self.start_turn = True
                             self.count_turn = 0
                             self.start_turn_time_stamp = time.time()
+
+                            # --- 메카넘: 제자리 90° 우회전 '한 번' 수행 ---
+                            if self.machine_type == 'MentorPi_Mecanum':
+                                # 피드백(정확) 또는 오픈루프(간단) 중 택1
+                                self.rotate_right_90_feedback(source="odom")  # 추천
+                                # self.rotate_right_90_in_place(yaw_rate=0.8)
+
+                                # 회전 후 정리/복귀
+                                self.mecanum_pub.publish(Twist())
+                                self.start_turn = False
+                                # (선택) 잠깐 대기
+                                time.sleep(0.1)
+                                # 바로 return 하면 같은 프레임에서 추가 퍼블리시를 피할 수 있음
+                                # return
+                                continue
+
+                            else:
+                                # Ackermann 등은 기존 강한 회전 로직 유지
+                                pass
+
+                        # (Ackermann 등 기존 턴 동작 유지)
                         if self.machine_type != 'MentorPi_Acker':
-                            twist.angular.z = -0.45  # turning speed
+                            # 메카넘이지만 위에서 90° 이미 했으면 아래 각속도는 굳이 안 줘도 됨
+                            # 필요 없다면 주석 처리 가능
+                            twist.linear.x = min(twist.linear.x if twist.linear.x > 0 else self.normal_speed,
+                                                self.turn_linear_limit)
+                            twist.angular.z = -0.45
                         else:
+                            twist.linear.x = min(twist.linear.x if twist.linear.x > 0 else self.normal_speed,
+                                                self.turn_linear_limit)
                             twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
-                    else:  # use PID algorithm to correct turns on a straight road
+
+                        self.mecanum_pub.publish(twist)
+
+                    else:
+                        # 트리거 해제 시 카운터 리셋 및 턴 유지 타임아웃 처리
                         self.count_turn = 0
-                        if time.time() - self.start_turn_time_stamp > 2 and self.start_turn:
+                        if self.start_turn and (time.time() - self.start_turn_time_stamp > self.turn_hold_sec):
                             self.start_turn = False
-                        if not self.start_turn:
-                            self.pid.SetPoint = 130  # the coordinate of the line while the robot is in the middle of the lane
+
+                        # --- 턴 상황이 아니면 기존 PID 미세 조향 ---
+                        if lane_x >= 0 and not self.start_turn:
+                            self.pid.SetPoint = 130  # 화면/전처리에 맞게 재보정 가능
                             self.pid.update(lane_x)
                             if self.machine_type != 'MentorPi_Acker':
                                 twist.angular.z = common.set_range(self.pid.output, -0.1, 0.1)
                             else:
-                                twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
+                                twist.angular.z = twist.linear.x * math.tan(
+                                    common.set_range(self.pid.output, -0.1, 0.1)
+                                ) / 0.145
+                            self.mecanum_pub.publish(twist)
                         else:
-                            if self.machine_type == 'MentorPi_Acker':
+                            # Ackermann에서 턴 유지 시간 동안 약한 유지 회전(선택)
+                            if self.start_turn and self.machine_type == 'MentorPi_Acker':
+                                twist.linear.x = min(twist.linear.x if twist.linear.x > 0 else self.normal_speed,
+                                                    self.turn_linear_limit)
                                 twist.angular.z = 0.15 * math.tan(-0.5061) / 0.145
-                    self.mecanum_pub.publish(twist)  
+                                self.mecanum_pub.publish(twist)
+                            else:
+                                self.pid.clear()
                 else:
                     self.pid.clear()
 
-             
                 if self.objects_info:
                     for i in self.objects_info:
                         box = i.box
