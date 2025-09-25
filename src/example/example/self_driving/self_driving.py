@@ -113,7 +113,7 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.1  # normal driving speed
+        self.normal_speed = 0.3  # normal driving speed speed up
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -122,6 +122,18 @@ class SelfDrivingNode(Node):
         self.object_sub = None
         self.image_sub = None
         self.objects_info = []
+        self.crosswalk_cool_until = 0.0 #쿨다운때 쓰려고 추가
+
+
+        #횡단보도 정차
+    def crosswalk_ready(self):
+        #쿨다운이 끝났는지 확인
+        return time.time() > self.crosswalk_cool_until
+
+    def set_crosswalk_cooldown(self, sec=3.0):
+        #쿨다운 타이머 
+        self.crosswalk_cool_until = time.time() + sec
+
 
     def get_node_state(self, request, response):
         response.success = True
@@ -258,6 +270,21 @@ class SelfDrivingNode(Node):
                 else:  # need to detect continuously, otherwise reset
                     self.count_crosswalk = 0
 
+                #cooldown
+                if self.active['crosswalk'] and self.crosswalk_ready():
+                    if self.active['red']:
+                        # red -> stop
+                        self.mecanum_pub.publish(Twist())
+                        self.stop = True
+                        self.set_crosswalk_cooldown(3.0)  # 이후 3초간 무시
+
+                    elif self.active['green']:
+                        # green pass
+                        twist.linear.x = self.slow_down_speed
+                        self.stop = False
+                        self.set_crosswalk_cooldown(3.0)  # 이후 3초간 무시
+
+
                 # deceleration processing
                 if self.start_slow_down:
                     if self.traffic_signs_status is not None:
@@ -366,9 +393,10 @@ class SelfDrivingNode(Node):
                 class_name = i.class_name
                 center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
                 
-                if class_name == 'crosswalk':  
-                    if center[1] > min_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
-                        min_distance = center[1]
+                if class_name == 'crosswalk':
+                    if self.crosswalk_ready(): # NOT cool down update 
+                        if center[1] > min_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
+                            min_distance = center[1]
                 elif class_name == 'right':  # obtain the right turning sign
                     self.count_right += 1
                     self.count_right_miss = 0
