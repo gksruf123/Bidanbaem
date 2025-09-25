@@ -116,11 +116,8 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-<<<<<<< HEAD
-        self.normal_speed = 0.3  # normal driving speed
-=======
-        self.normal_speed = 0.8  # normal driving speed
->>>>>>> 0763af8 (chore: test different autonomous driving speed value)
+
+        self.normal_speed = 0.5  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -135,7 +132,7 @@ class SelfDrivingNode(Node):
         self.band_density_th = 0.02    # 하단 밴드 픽셀 밀도 임계(1~5% 추천)
         self.turn_frames_req = 6       # 연속 프레임 수(>5와 동일 의미)
         self.turn_hold_sec = 2.0       # 턴 유지 시간(초)
-        self.turn_linear_limit = 0.08  # 턴 중 최대 직진 속도(안정화)
+        self.turn_linear_limit = 0.0  # 턴 중 최대 직진 속도(안정화)
         self.rotating = False
 
     def get_node_state(self, request, response):
