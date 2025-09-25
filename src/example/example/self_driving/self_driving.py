@@ -392,7 +392,7 @@ class SelfDrivingNode(Node):
                             self.is_start = True
                
 
-            self.get_logger().info('\033[1;32m%s\033[0m' % class_name)
+                self.get_logger().info('\033[1;32m%s\033[0m' % class_name)
             self.crosswalk_distance = min_distance
 
 def main():
