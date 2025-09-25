@@ -42,7 +42,7 @@ def launch_setup(context):
         output='screen',
         parameters=[{'classes': ['go', 'right', 'park', 'red', 'green', 'crosswalk']},
             {"device": "cpu",
-            "model": "traffic_signs_640s_7_0",
+            "model": "best",
             "image_topic": "/ascamera/camera_publisher/rgb0/image",
             "camera_info_topic": "/camera/camera_info",
             "camera_info_file": f"{package_share_directory}/config/camera_info.yaml",
