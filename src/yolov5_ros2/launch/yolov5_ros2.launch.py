@@ -24,7 +24,8 @@ def launch_setup(context):
         parameters=[
             {"device": "cpu",
             #"model": "garbage_classification",
-            "model": "traffic_signs_640s_7_0",
+            #"model": "traffic_signs_640s_7_0",
+            "model": "best",
             #"model": "yolov5s",
             "image_topic": "/ascamera/camera_publisher/rgb0/image",
             #"camera_info_topic": "/camera/camera_info",
