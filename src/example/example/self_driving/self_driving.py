@@ -372,10 +372,12 @@ class SelfDrivingNode(Node):
             for i in self.objects_info:
                 class_name = i.class_name
                 center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
+                cw_distance = i.distance
                 
-                if class_name == 'crosswalk':  
-                    if center[1] > min_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
-                        min_distance = center[1]
+                if class_name == 'crosswalk':
+                    self.get_logger().info(f"\033[1;31m{c:.2f}\033[0m")
+                    if cw_distance > min_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
+                        min_distance = cw_distance
                 elif class_name == 'right':  # obtain the right turning sign
                     self.count_right += 1
                     self.count_right_miss = 0
