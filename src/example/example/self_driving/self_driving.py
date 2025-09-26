@@ -8,7 +8,7 @@ import os
 import cv2
 import math
 import time
-import queue
+# import queue
 import rclpy
 import threading
 import numpy as np
@@ -37,8 +37,11 @@ class SelfDrivingNode(Node):
         self.pid = pid.PID(0.4, 0.0, 0.05)
         self.param_init()
 
+        self.latest_image = None
+        self.img_lock = threading.RLock()
+
         self.fps = fps.FPS()
-        self.image_queue = queue.Queue(maxsize=2)
+        # self.image_queue = queue.Queue(maxsize=2)
         self.classes = ['go', 'right', 'park', 'red', 'green', 'crosswalk']
         self.display = True
         self.bridge = CvBridge()
@@ -178,9 +181,9 @@ class SelfDrivingNode(Node):
     def image_callback(self, ros_image):
         cv_image = self.bridge.imgmsg_to_cv2(ros_image, "rgb8")
         rgb_image = np.array(cv_image, dtype=np.uint8)
-        if self.image_queue.full():
-            self.image_queue.get()
-        self.image_queue.put(rgb_image)
+        # 최신 프레임 1장만 보관
+        with self.img_lock:
+            self.latest_image = rgb_image
 
     def get_object_callback(self, msg):
         # 객체 인식 결과 최신 상태를 유지(정지 시에만 활용)
@@ -319,12 +322,11 @@ class SelfDrivingNode(Node):
                 time.sleep(0.02)
                 continue
 
-            # 최신 프레임으로 차선 추정
+            # --- 최신 프레임 가져오기 ---
             img = None
-            try:
-                img = self.image_queue.get_nowait()
-            except queue.Empty:
-                pass
+            with self.img_lock:
+                if self.latest_image is not None:
+                    img = self.latest_image.copy()
 
             if img is not None:
                 binary = self.lane_detect.get_binary(img)
@@ -447,15 +449,22 @@ class SelfDrivingNode(Node):
     def main(self):
         while self.is_running:
             time_start = time.time()
-            try:
-                image = self.image_queue.get(block=True, timeout=1)
-            except queue.Empty:
-                if not self.is_running:
-                    break
-                else:
-                    continue
 
-            result_image = image.copy()
+            # 회전 중에는 정지 유지
+            if self.rotating:
+                self.mecanum_pub.publish(Twist())
+                time.sleep(0.01)
+                continue
+
+            # 최신 프레임 읽기
+            with self.img_lock:
+                frame = None if self.latest_image is None else self.latest_image.copy()
+
+            if frame is None:
+                time.sleep(0.01)
+                continue
+
+            result_image = frame.copy()
 
             # (표시용) 객체 박스 오버레이
             if self.display and self.objects_info:
@@ -483,6 +492,7 @@ class SelfDrivingNode(Node):
             time_d = 0.03 - (time.time() - time_start)
             if time_d > 0:
                 time.sleep(time_d)
+
 
         self.mecanum_pub.publish(Twist())
         rclpy.shutdown()
