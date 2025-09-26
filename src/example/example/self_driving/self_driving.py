@@ -96,13 +96,13 @@ class SelfDrivingNode(Node):
 
         # -------- 하드코딩 주행 플랜 --------
         self.plan = [
-            ("DRIVE", 2.6, 0.3),
+            ("DRIVE", 2.6, 0.8),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 2.6, 0.3),
+            ("DRIVE", 2.6, 0.8),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 2.6, 0.3),
+            ("DRIVE", 2.6, 0.8),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 2.6, 0.3),
+            ("DRIVE", 2.6, 0.8),
         ]
         self.step_idx = 0
         self.in_action = False
@@ -395,7 +395,7 @@ class SelfDrivingNode(Node):
             pass
 
 
-    def perceive_trafficlight_at_stop(self, frames=5, timeout=3.0):
+    def perceive_trafficlight_at_stop(self, frames=3, timeout=3.0):
         """
         정지 상태에서만 인식. frames개 이상 일관되게 보이면 채택.
         반환: 'red' | 'green' | 'crosswalk' | 'unknown'
