@@ -8,7 +8,6 @@ import os
 import cv2
 import math
 import time
-# import queue
 import rclpy
 import threading
 import numpy as np
@@ -27,10 +26,11 @@ from example.self_driving import lane_detect
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from ros_robot_controller_msgs.msg import SetPWMServoState
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 
 class SelfDrivingNode(Node):
     def __init__(self, name):
-        rclpy.init()
+        # rclpy.init()  # <-- main()에서만 호출
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
         self.name = name
         self.is_running = True
@@ -41,7 +41,6 @@ class SelfDrivingNode(Node):
         self.img_lock = threading.RLock()
 
         self.fps = fps.FPS()
-        # self.image_queue = queue.Queue(maxsize=2)
         self.classes = ['go', 'right', 'park', 'red', 'green', 'crosswalk']
         self.display = True
         self.bridge = CvBridge()
@@ -50,23 +49,36 @@ class SelfDrivingNode(Node):
         self.machine_type = os.environ.get('MACHINE_TYPE')
         self.lane_detect = lane_detect.LaneDetector("yellow")
 
+        # QoS: 센서 스트림은 BEST_EFFORT, depth=1 권장
+        self.sensor_qos = QoSProfile(
+            depth=1,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST
+        )
+
         self.mecanum_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
         self.servo_state_pub = self.create_publisher(SetPWMServoState, 'ros_robot_controller/pwm_servo/set_state', 1)
         self.result_publisher = self.create_publisher(Image, '~/image_result', 1)
 
+        # Services (servers)
         self.create_service(Trigger, '~/enter', self.enter_srv_callback)   # enter the game
         self.create_service(Trigger, '~/exit', self.exit_srv_callback)     # exit the game
         self.create_service(SetBool, '~/set_running', self.set_running_srv_callback)
 
+        # Service clients (with timeout wait)
         timer_cb_group = ReentrantCallbackGroup()
         self.client = self.create_client(Trigger, '/yolov5_ros2/init_finish')
-        self.client.wait_for_service()
         self.start_yolov5_client = self.create_client(Trigger, '/yolov5/start', callback_group=timer_cb_group)
-        self.start_yolov5_client.wait_for_service()
-        self.stop_yolov5_client = self.create_client(Trigger, '/yolov5/stop', callback_group=timer_cb_group)
-        self.stop_yolov5_client.wait_for_service()
+        self.stop_yolov5_client  = self.create_client(Trigger, '/yolov5/stop',  callback_group=timer_cb_group)
 
-        self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
+        for cli, name_ in [(self.client, '/yolov5_ros2/init_finish'),
+                           (self.start_yolov5_client, '/yolov5/start'),
+                           (self.stop_yolov5_client, '/yolov5/stop')]:
+            if not self._wait_service(cli, 5.0):
+                self.get_logger().warn(f"Service {name_} not available within timeout; continuing anyway.")
+
+        # 타이머는 0.0 금지 → 짧게 한 번 돌릴 용도로 0.05s
+        self.timer = self.create_timer(0.05, self.init_process, callback_group=timer_cb_group)
 
     # ------------------------- 초기화/파라미터 -------------------------
     def param_init(self):
@@ -83,8 +95,6 @@ class SelfDrivingNode(Node):
         self.slow_down_speed = 0.1
 
         # -------- 하드코딩 주행 플랜 --------
-        # 액션: ("DRIVE", 거리[m], 속도[m/s]), ("STOP&PERCEIVE",), ("TURN_RIGHT", 각도[deg])
-        # 코스에 맞게 아래 값들만 바꿔서 사용하세요.
         self.plan = [
             ("DRIVE", 2.6, 0.3),
             ("TURN_RIGHT", 90),
@@ -97,15 +107,31 @@ class SelfDrivingNode(Node):
         self.step_idx = 0
         self.in_action = False
 
+    def _wait_service(self, client, sec=5.0):
+        t0 = time.time()
+        while not client.wait_for_service(timeout_sec=0.2):
+            if time.time() - t0 > sec:
+                return False
+        return True
+
     def init_process(self):
-        self.timer.cancel()
+        # 타이머는 1회성
+        try:
+            self.timer.cancel()
+        except Exception:
+            pass
 
-        self.mecanum_pub.publish(Twist())
+        # 초기 정지
+        self._hard_stop()
+
         # 객체 인식 노드 시작 (정지 때만 실제 결과를 사용)
-        self.send_request(self.start_yolov5_client, Trigger.Request())
-        time.sleep(0.5)
+        res = self.send_request(self.start_yolov5_client, Trigger.Request(), timeout_sec=5.0)
+        if not res or not getattr(res, 'success', False):
+            self.get_logger().warn("Failed to start YOLOv5 service")
 
-        # 자동 시작
+        time.sleep(0.2)
+
+        # 자동 시작: 서버 콜백 직접 호출(내부 상태 세팅 목적)
         self.display = True
         self.enter_srv_callback(Trigger.Request(), Trigger.Response())
         request = SetBool.Request()
@@ -122,25 +148,26 @@ class SelfDrivingNode(Node):
         response.success = True
         return response
 
-    def send_request(self, client, msg):
+    def send_request(self, client, msg, timeout_sec=5.0):
         future = client.call_async(msg)
-        while rclpy.ok():
-            if future.done() and future.result():
-                return future.result()
+        rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
+        if not future.done():
+            return None
+        return future.result()
 
     # ------------------------- 서비스 콜백 -------------------------
     def enter_srv_callback(self, request, response):
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving enter")
         with self.lock:
             self.start = False
-            # 구독 핸들을 멤버에 저장(해제 위해)
+            # 구독 핸들을 멤버에 저장(해제 위해) + QoS 적용
             self.image_sub = self.create_subscription(
-                Image, '/ascamera/camera_publisher/rgb0/image', self.image_callback, 1
+                Image, '/ascamera/camera_publisher/rgb0/image', self.image_callback, self.sensor_qos
             )
             self.object_sub = self.create_subscription(
                 ObjectsInfo, '/yolov5_ros2/object_detect', self.get_object_callback, 1
             )
-            self.mecanum_pub.publish(Twist())
+            self._hard_stop()
             self.enter = True
         response.success = True
         response.message = "enter"
@@ -158,7 +185,7 @@ class SelfDrivingNode(Node):
                     self.object_sub = None
             except Exception as e:
                 self.get_logger().info('\033[1;32m%s\033[0m' % str(e))
-            self.mecanum_pub.publish(Twist())
+            self._hard_stop()
         self.param_init()
         response.success = True
         response.message = "exit"
@@ -169,15 +196,20 @@ class SelfDrivingNode(Node):
         with self.lock:
             self.start = request.data
             if not self.start:
-                self.mecanum_pub.publish(Twist())
+                self._hard_stop()
         response.success = True
         response.message = "set_running"
         return response
 
-    def shutdown(self, signum, frame):
+    def shutdown(self, signum=None, frame=None):
         self.is_running = False
 
     # ------------------------- 콜백/유틸 -------------------------
+    def _hard_stop(self):
+        self.mecanum_pub.publish(Twist())
+        time.sleep(0.02)
+        self.mecanum_pub.publish(Twist())
+
     def image_callback(self, ros_image):
         cv_image = self.bridge.imgmsg_to_cv2(ros_image, "rgb8")
         rgb_image = np.array(cv_image, dtype=np.uint8)
@@ -212,7 +244,7 @@ class SelfDrivingNode(Node):
             self.mecanum_pub.publish(twist)
             time.sleep(0.02)
 
-        self.mecanum_pub.publish(Twist())
+        self._hard_stop()
         self.rotating = False
 
     def rotate_right_90_feedback(self, source="odom", max_rate=1.0, min_rate=0.2, timeout=5.0):
@@ -229,7 +261,7 @@ class SelfDrivingNode(Node):
             yaw_now = self._yaw_from_quat(msg.orientation)
 
         if source == "odom":
-            sub = self.create_subscription(Odometry, "/odom", odom_cb, 1)
+            sub = self.create_subscription(Odometry, "/odom", odom_cb, self.sensor_qos)
         else:
             sub = self.create_subscription(Imu, "/imu", imu_cb, 1)
 
@@ -258,6 +290,7 @@ class SelfDrivingNode(Node):
             if yaw_now is None:
                 continue
 
+            # -pi..pi wrap
             delta = ((yaw_now - yaw_start + math.pi) % (2*math.pi)) - math.pi
             err = target_delta - delta
 
@@ -274,7 +307,7 @@ class SelfDrivingNode(Node):
 
             time.sleep(0.01)
 
-        self.mecanum_pub.publish(Twist())
+        self._hard_stop()
         try: self.destroy_subscription(sub)
         except Exception: pass
         self.rotating = False
@@ -300,7 +333,7 @@ class SelfDrivingNode(Node):
                 start = (x, y)
             pos = (x, y)
 
-        sub = self.create_subscription(Odometry, "/odom", odom_cb, 5)
+        sub = self.create_subscription(Odometry, "/odom", odom_cb, self.sensor_qos)
 
         twist = Twist()
         v = speed
@@ -318,7 +351,7 @@ class SelfDrivingNode(Node):
 
             # 회전/정지 중이면 대기
             if self.rotating or self.stop:
-                self.mecanum_pub.publish(Twist())
+                self._hard_stop()
                 time.sleep(0.02)
                 continue
 
@@ -335,8 +368,9 @@ class SelfDrivingNode(Node):
                 if lane_x >= 0:
                     lost_cnt = 0
                     self.pid.SetPoint = lane_setpoint
-                    self.pid.Kp = base_kp / (1.0 + v)    # 속도↑ → Kp↓
-                    self.pid.Kd = base_kd * (1.0 + v)    # 속도↑ → Kd↑
+                    # 속도 의존 게인 스케일 + 클램프
+                    self.pid.Kp = max(0.1, min(1.0, base_kp / (1.0 + v)))
+                    self.pid.Kd = max(0.0, min(0.5,  base_kd * (1.0 + v)))
                     self.pid.update(lane_x)
 
                     w = common.set_range(self.pid.output, -max_w, max_w)
@@ -350,21 +384,21 @@ class SelfDrivingNode(Node):
 
             if lost_cnt > LOST_MAX:
                 # 안전 정지
-                self.mecanum_pub.publish(Twist())
+                self._hard_stop()
                 break
 
             time.sleep(0.02)
 
-        self.mecanum_pub.publish(Twist())
+        self._hard_stop()
         try: self.destroy_subscription(sub)
         except Exception: pass
 
     def perceive_trafficlight_at_stop(self, frames=5, timeout=3.0):
         """
         정지 상태에서만 인식. frames개 이상 일관되게 보이면 채택.
-        반환: 'red' | 'green' | 'crosswalk' | 'unknown'  (모두 소문자)
+        반환: 'red' | 'green' | 'crosswalk' | 'unknown'
         """
-        self.mecanum_pub.publish(Twist())
+        self._hard_stop()
         t0 = time.time()
         green_cnt = red_cnt = crosswalk_cnt = 0
 
@@ -395,9 +429,28 @@ class SelfDrivingNode(Node):
         하드코딩된 self.plan을 순차 실행:
         DRIVE -> STOP&PERCEIVE -> TURN_RIGHT ...
         """
-        # 주행 허가가 떨어질 때까지 대기
+        # 1) start 신호 대기
         while not self.start and rclpy.ok():
             time.sleep(0.05)
+
+        # 2) 카메라 프레임 준비 대기 (최대 2초)
+        t0 = time.time()
+        while (self.latest_image is None) and (time.time() - t0 < 2.0) and rclpy.ok():
+            time.sleep(0.02)
+        if self.latest_image is None:
+            self.get_logger().warn("[GATE] No camera frame; delaying plan start by 1s")
+            time.sleep(1.0)
+
+        # 3) (선택) 오돔 준비 대기 (최대 2초)
+        got_odom = [False]
+        def _odom_once(msg):
+            got_odom[0] = True
+        sub_tmp = self.create_subscription(Odometry, "/odom", _odom_once, self.sensor_qos)
+        t0 = time.time()
+        while (not got_odom[0]) and (time.time() - t0 < 2.0) and rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.05)
+        try: self.destroy_subscription(sub_tmp)
+        except: pass
 
         self.in_action = True
         while rclpy.ok() and self.step_idx < len(self.plan):
@@ -427,14 +480,12 @@ class SelfDrivingNode(Node):
             elif kind == "TURN_RIGHT":
                 _, deg = step
                 self.get_logger().info(f"[PLAN] TURN_RIGHT {deg}deg")
-                # 메카넘이면 제자리 피드백 회전. 아커만이면 별도 로직 필요.
                 if self.machine_type == 'MentorPi_Mecanum':
                     self.rotate_right_90_feedback(source="odom")
                 else:
-                    # Ackermann 차량의 경우 in-place 회전이 불가. 여기선 간단히 제자리 회전 시도 대신
-                    # 기존 각속도 기반 회전(전/후진 조합) 로직을 작성해야 함.
+                    self.get_logger().warn("Ackermann: in-place turn not supported; using open-loop fallback.")
                     self.rotate_right_90_in_place(0.8)
-                self.mecanum_pub.publish(Twist())
+                self._hard_stop()
                 time.sleep(0.1)
                 self.step_idx += 1
 
@@ -452,7 +503,7 @@ class SelfDrivingNode(Node):
 
             # 회전 중에는 정지 유지
             if self.rotating:
-                self.mecanum_pub.publish(Twist())
+                self._hard_stop()
                 time.sleep(0.01)
                 continue
 
@@ -493,17 +544,20 @@ class SelfDrivingNode(Node):
             if time_d > 0:
                 time.sleep(time_d)
 
-
-        self.mecanum_pub.publish(Twist())
-        rclpy.shutdown()
+        self._hard_stop()
+        # rclpy.shutdown()  # <-- main()에서 처리
 
 # ------------------------- 엔트리 -------------------------
 def main():
+    rclpy.init()
     node = SelfDrivingNode('self_driving')
     executor = MultiThreadedExecutor()
     executor.add_node(node)
-    executor.spin()
-    node.destroy_node()
+    try:
+        executor.spin()
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == "__main__":
     main()
