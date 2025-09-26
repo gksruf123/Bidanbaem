@@ -96,13 +96,24 @@ class SelfDrivingNode(Node):
 
         # -------- 하드코딩 주행 플랜 --------
         self.plan = [
-            ("DRIVE", 2.6, 0.8),
+            ("DRIVE", 1.0, 0.8),
+            ("STOP&PERCEIVE", {"frames": 7, "timeout": 1.0}),
+            ("DRIVE", 1.6, 0.8),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 2.6, 0.8),
+            ("DRIVE", 0.6, 0.8),
+            ("STOP&PERCEIVE", {"frames": 7, "timeout": 1.0}),
+            ("DRIVE", 2.0, 0.8),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 2.6, 0.8),
+            ("DRIVE", 1.6, 0.8),
+            ("STOP&PERCEIVE", {"frames": 7, "timeout": 1.0}),
+            ("DRIVE", 1.0, 0.8),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 2.6, 0.8),
+            ("DRIVE", 1.0, 0.8),
+            ("STOP&PERCEIVE", {"frames": 7, "timeout": 1.0}),
+            ("DRIVE", 0.3, 0.8),
+            ("TURN_RIGHT", 90),
+            ("DRIVE", 1.9, 0.8),
+             ("PARK", 0.40, 0.80),   # (kind, right_distance_m, speed_mps)
         ]
         self.step_idx = 0
         self.in_action = False
@@ -228,7 +239,7 @@ class SelfDrivingNode(Node):
         return math.atan2(siny_cosp, cosy_cosp)
 
     # ------------------------- 제자리 회전 -------------------------
-    def rotate_right_90_in_place(self, yaw_rate=0.8):
+    def rotate_right_90_in_place(self, yaw_rate=1.3):
         """오픈 루프: 제자리에서 오른쪽 90°(간단/캘리브 필요)"""
         self.rotating = True
         twist = Twist()
@@ -247,7 +258,7 @@ class SelfDrivingNode(Node):
         self._hard_stop()
         self.rotating = False
 
-    def rotate_right_90_feedback(self, source="odom", max_rate=1.0, min_rate=0.2, timeout=5.0):
+    def rotate_right_90_feedback(self, source="odom", max_rate=1.3, min_rate=0.2, timeout=5.0):
         """피드백 루프: /odom 또는 /imu yaw로 정확히 -90° 도달까지 회전"""
         yaw_now = None
         self.rotating = True
@@ -273,7 +284,7 @@ class SelfDrivingNode(Node):
             self.get_logger().warn("Yaw not available; fallback to open-loop 90°.")
             try: self.destroy_subscription(sub)
             except Exception: pass
-            self.rotate_right_90_in_place(0.8)
+            self.rotate_right_90_in_place(1.3)
             self.rotating = False
             return
 
@@ -302,7 +313,7 @@ class SelfDrivingNode(Node):
             twist.angular.z = w_cmd
             self.mecanum_pub.publish(twist)
 
-            if abs(err) < math.radians(2.0):
+            if abs(err) < math.radians(1.5):
                 break
 
             time.sleep(0.01)
@@ -314,8 +325,8 @@ class SelfDrivingNode(Node):
 
     # ------------------------- 주행 프리미티브 -------------------------
     def drive_distance_straight(self, target_dist=1.5, speed=0.25,
-                                use_heading_feedback=True, max_w=0.25,
-                                timeout=15.0, source="odom"):
+                                use_heading_feedback=True, max_w=0.35,
+                                timeout=20.0, source="odom"):
         """
         차선 무시, '딱 직진'.
         - use_heading_feedback=True: 출발 yaw를 유지하며 직진(권장)
@@ -350,7 +361,7 @@ class SelfDrivingNode(Node):
         t0 = time.time()
 
         # 헤딩 유지 제어 게인
-        Kp_heading = 1.0  # 필요시 0.6~1.5 사이에서 튠
+        Kp_heading = 1.3  # 필요시 0.6~1.5 사이에서 튠
         while rclpy.ok() and (time.time() - t0) < timeout:
             # 거리 종료
             if source == "odom" and pos is not None and start is not None:
@@ -394,15 +405,99 @@ class SelfDrivingNode(Node):
         except Exception:
             pass
 
+    # parking action
+    def strafe_right_distance(self, target_dist=0.4, speed=0.2,
+                            use_heading_feedback=True, timeout=8.0, source="odom"):
+        """
+        메카넘 우측 평행 이동: base_link 기준 +y가 좌측이므로 우측은 linear.y 음수.
+        오돔을 이용해 '우측' 성분 이동거리를 누적해 target_dist에 도달하면 정지.
+        """
+        start = None
+        pos = None
+        yaw_now = None
+        yaw_ref = None
 
-    def perceive_trafficlight_at_stop(self, frames=3, timeout=3.0):
+        def odom_cb(msg):
+            nonlocal pos, start, yaw_now
+            x = msg.pose.pose.position.x
+            y = msg.pose.pose.position.y
+            if start is None:
+                start = (x, y)
+            pos = (x, y)
+            yaw_now = self._yaw_from_quat(msg.pose.pose.orientation)
+
+        def imu_cb(msg):
+            nonlocal yaw_now
+            yaw_now = self._yaw_from_quat(msg.orientation)
+
+        # 구독
+        if source == "odom":
+            sub = self.create_subscription(Odometry, "/odom", odom_cb, self.sensor_qos)
+        else:
+            sub = self.create_subscription(Imu, "/imu", imu_cb, 1)
+
+        twist = Twist()
+        v_y = -abs(speed)  # 우측 이동은 음수
+        t0 = time.time()
+
+        # 헤딩 유지 게인(직진 함수와 동일 톤)
+        Kp_heading = 1.2
+        max_w = 0.35
+
+        while rclpy.ok() and (time.time() - t0) < timeout:
+            if self.rotating or self.stop:
+                self._hard_stop()
+                time.sleep(0.01)
+                continue
+
+            # 기준 yaw 캡처
+            if use_heading_feedback and (yaw_ref is None) and (yaw_now is not None):
+                yaw_ref = yaw_now
+
+            # 헤딩 에러 보정(회전 억제)
+            w_cmd = 0.0
+            if use_heading_feedback and (yaw_ref is not None) and (yaw_now is not None):
+                err = ((yaw_ref - yaw_now + math.pi) % (2 * math.pi)) - math.pi
+                w_cmd = max(-max_w, min(max_w, Kp_heading * err))
+
+            # 목표 도달 판정(오돔에서 우측 성분만 투영)
+            done = False
+            if source == "odom" and (pos is not None) and (start is not None) and (yaw_ref is not None):
+                dx = pos[0] - start[0]
+                dy = pos[1] - start[1]
+                # base_link 기준: 좌측(+y) 단위벡터 = [-sin(yaw_ref), cos(yaw_ref)]
+                lateral_left = (-math.sin(yaw_ref)) * dx + (math.cos(yaw_ref)) * dy
+                lateral_right = -lateral_left  # 우측을 양수로 정의
+                if lateral_right >= target_dist:
+                    done = True
+
+            twist.linear.x = 0.0
+            twist.linear.y = v_y
+            twist.angular.z = w_cmd
+            self.mecanum_pub.publish(twist)
+
+            if done:
+                break
+
+            rclpy.spin_once(self, timeout_sec=0.01)
+            time.sleep(0.01)
+
+        self._hard_stop()
+        try:
+            self.destroy_subscription(sub)
+        except Exception:
+            pass
+
+
+    def perceive_trafficlight_at_stop(self, frames=3, timeout=1.0):
         """
         정지 상태에서만 인식. frames개 이상 일관되게 보이면 채택.
         반환: 'red' | 'green' | 'crosswalk' | 'unknown'
         """
         self._hard_stop()
         t0 = time.time()
-        green_cnt = red_cnt = crosswalk_cnt = 0
+        green_cnt = red_cnt = 0
+        # crosswalk_cnt = 0
 
         while (time.time()-t0) < timeout:
             objs = list(self.objects_info) if self.objects_info else []
@@ -411,9 +506,9 @@ class SelfDrivingNode(Node):
                     green_cnt += 1
                 elif o.class_name == 'red':
                     red_cnt += 1
-                elif o.class_name == 'crosswalk':
-                    crosswalk_cnt += 1
-            if green_cnt >= frames or red_cnt >= frames or crosswalk_cnt >= frames:
+                # elif o.class_name == 'crosswalk':
+                #     crosswalk_cnt += 1
+            if green_cnt >= frames or red_cnt >= frames: # 필요하면 or crosswalk_cnt 여기에 추가
                 break
             time.sleep(0.05)
 
@@ -421,8 +516,8 @@ class SelfDrivingNode(Node):
             return "red"
         if green_cnt >= frames:
             return "green"
-        if crosswalk_cnt >= frames:
-            return "crosswalk"
+        # if crosswalk_cnt >= frames:
+        #     return "crosswalk"
         return "unknown"
 
     # ------------------------- 플랜 실행기 -------------------------
@@ -468,8 +563,11 @@ class SelfDrivingNode(Node):
                 self.step_idx += 1
 
             elif kind == "STOP&PERCEIVE":
+                opts = step[1] if len(step) > 1 else {}
+                frames = opts.get("frames", 5)
+                timeout = opts.get("timeout", 1.0)
                 self.get_logger().info("[PLAN] STOP & PERCEIVE")
-                result = self.perceive_trafficlight_at_stop(frames=5, timeout=3.0)
+                result = self.perceive_trafficlight_at_stop(frames=frames, timeout=timeout)
                 self.get_logger().info(f"[PERCEIVE] {result}")
 
                 # 예시 정책: 빨간불이면 최대 5초 동안 초록 기다림
@@ -489,6 +587,19 @@ class SelfDrivingNode(Node):
                 else:
                     self.get_logger().warn("Ackermann: in-place turn not supported; using open-loop fallback.")
                     self.rotate_right_90_in_place(0.8)
+                self._hard_stop()
+                time.sleep(0.1)
+                self.step_idx += 1
+
+            elif kind == "PARK":
+                _, dist, speed = step
+                self.get_logger().info(f"[PLAN] PARK right {dist}m @ {speed}m/s")
+                # 메카넘만 지원 (Ackermann이면 경고 후 스킵)
+                if self.machine_type == 'MentorPi_Mecanum':
+                    self.strafe_right_distance(target_dist=dist, speed=speed,
+                                            use_heading_feedback=True, timeout=8.0, source="odom")
+                else:
+                    self.get_logger().warn("Ackermann: lateral PARK not supported.")
                 self._hard_stop()
                 time.sleep(0.1)
                 self.step_idx += 1
