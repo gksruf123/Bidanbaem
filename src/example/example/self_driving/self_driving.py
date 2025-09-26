@@ -313,85 +313,87 @@ class SelfDrivingNode(Node):
         self.rotating = False
 
     # ------------------------- 주행 프리미티브 -------------------------
-    def drive_distance_with_lane(self, target_dist=1.5, speed=0.25,
-                                 lane_setpoint=None, max_w=0.25, timeout=15.0):
+    def drive_distance_straight(self, target_dist=1.5, speed=0.25,
+                                use_heading_feedback=True, max_w=0.25,
+                                timeout=15.0, source="odom"):
         """
-        /odom 기반으로 target_dist(m) 전진.
-        이동 중 yaw는 차선 PID(lane_x)로만 보정 → 차선 이탈 방지.
-        주행 중 객체 인식 결과는 사용하지 않음(흔들림 회피).
+        차선 무시, '딱 직진'.
+        - use_heading_feedback=True: 출발 yaw를 유지하며 직진(권장)
+        - use_heading_feedback=False: 각속도 0 고정(오픈루프)
         """
         start = None
         pos = None
-        LOST_MAX = 8
-        lost_cnt = 0
+        yaw_now = None
+        yaw_ref = None
 
         def odom_cb(msg):
-            nonlocal pos, start
+            nonlocal pos, start, yaw_now
             x = msg.pose.pose.position.x
             y = msg.pose.pose.position.y
             if start is None:
                 start = (x, y)
             pos = (x, y)
+            yaw_now = self._yaw_from_quat(msg.pose.pose.orientation)
 
-        sub = self.create_subscription(Odometry, "/odom", odom_cb, self.sensor_qos)
+        def imu_cb(msg):
+            nonlocal yaw_now
+            yaw_now = self._yaw_from_quat(msg.orientation)
+
+        # 구독
+        if source == "odom":
+            sub = self.create_subscription(Odometry, "/odom", odom_cb, self.sensor_qos)
+        else:
+            sub = self.create_subscription(Imu, "/imu", imu_cb, 1)
 
         twist = Twist()
         v = speed
         t0 = time.time()
-        lane_setpoint = lane_setpoint if lane_setpoint is not None else 130
 
-        base_kp, base_kd = 0.4, 0.05
-
+        # 헤딩 유지 제어 게인
+        Kp_heading = 1.0  # 필요시 0.6~1.5 사이에서 튠
         while rclpy.ok() and (time.time() - t0) < timeout:
             # 거리 종료
-            if pos is not None and start is not None:
-                dist = math.hypot(pos[0]-start[0], pos[1]-start[1])
+            if source == "odom" and pos is not None and start is not None:
+                dist = math.hypot(pos[0] - start[0], pos[1] - start[1])
                 if dist >= target_dist:
                     break
 
             # 회전/정지 중이면 대기
             if self.rotating or self.stop:
                 self._hard_stop()
-                time.sleep(0.02)
+                time.sleep(0.01)
                 continue
 
-            # --- 최신 프레임 가져오기 ---
-            img = None
-            with self.img_lock:
-                if self.latest_image is not None:
-                    img = self.latest_image.copy()
-
-            if img is not None:
-                binary = self.lane_detect.get_binary(img)
-                _, lane_angle, lane_x = self.lane_detect(binary, img.copy())
-
-                if lane_x >= 0:
-                    lost_cnt = 0
-                    self.pid.SetPoint = lane_setpoint
-                    # 속도 의존 게인 스케일 + 클램프
-                    self.pid.Kp = max(0.1, min(1.0, base_kp / (1.0 + v)))
-                    self.pid.Kd = max(0.0, min(0.5,  base_kd * (1.0 + v)))
-                    self.pid.update(lane_x)
-
-                    w = common.set_range(self.pid.output, -max_w, max_w)
-                    twist.linear.x = v
-                    twist.angular.z = w
-                    self.mecanum_pub.publish(twist)
+            # 각속도 결정
+            w_cmd = 0.0
+            if use_heading_feedback:
+                # 기준각 캡처
+                if yaw_ref is None and yaw_now is not None:
+                    yaw_ref = yaw_now
+                if yaw_ref is not None and yaw_now is not None:
+                    # err = yaw_ref - yaw_now (wrap to -pi..pi)
+                    err = ((yaw_ref - yaw_now + math.pi) % (2 * math.pi)) - math.pi
+                    w_cmd = max(-max_w, min(max_w, Kp_heading * err))
                 else:
-                    lost_cnt += 1
+                    # 아직 yaw 못 받았으면 일단 각속도 0으로 직진
+                    w_cmd = 0.0
             else:
-                lost_cnt += 1
+                # 완전 오픈루프 직진
+                w_cmd = 0.0
 
-            if lost_cnt > LOST_MAX:
-                # 안전 정지
-                self._hard_stop()
-                break
+            twist.linear.x = v
+            twist.angular.z = w_cmd
+            self.mecanum_pub.publish(twist)
 
-            time.sleep(0.02)
+            rclpy.spin_once(self, timeout_sec=0.01)
+            time.sleep(0.01)
 
         self._hard_stop()
-        try: self.destroy_subscription(sub)
-        except Exception: pass
+        try:
+            self.destroy_subscription(sub)
+        except Exception:
+            pass
+
 
     def perceive_trafficlight_at_stop(self, frames=5, timeout=3.0):
         """
@@ -460,7 +462,9 @@ class SelfDrivingNode(Node):
             if kind == "DRIVE":
                 _, dist, speed = step
                 self.get_logger().info(f"[PLAN] DRIVE {dist}m @ {speed}m/s")
-                self.drive_distance_with_lane(target_dist=dist, speed=speed)
+                self.drive_distance_straight(target_dist=dist, speed=speed,
+                             use_heading_feedback=True,  # False면 각속도 0 고정
+                             max_w=0.25, timeout=15.0, source="odom")
                 self.step_idx += 1
 
             elif kind == "STOP&PERCEIVE":
