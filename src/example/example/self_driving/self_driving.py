@@ -96,23 +96,23 @@ class SelfDrivingNode(Node):
 
         # -------- 하드코딩 주행 플랜 --------
         self.plan = [
-            ("DRIVE", 1.0, 0.8),
+            ("DRIVE", 1.0, 1.5),
             ("STOP&PERCEIVE", {"frames": 7, "timeout": 1.0}),
-            ("DRIVE", 1.6, 0.8),
+            ("DRIVE", 1.6, 1.5),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 0.6, 0.8),
+            ("DRIVE", 0.5, 1.5),
             ("STOP&PERCEIVE", {"frames": 7, "timeout": 1.0}),
-            ("DRIVE", 2.0, 0.8),
+            ("DRIVE", 1.9, 1.5),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 1.6, 0.8),
+            ("DRIVE", 1.6, 1.5),
             ("STOP&PERCEIVE", {"frames": 7, "timeout": 1.0}),
-            ("DRIVE", 1.0, 0.8),
+            ("DRIVE", 1.0, 1.5),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 1.0, 0.8),
+            ("DRIVE", 1.0, 1.5),
             ("STOP&PERCEIVE", {"frames": 7, "timeout": 1.0}),
-            ("DRIVE", 0.3, 0.8),
+            ("DRIVE", 0.3, 1.5),
             ("TURN_RIGHT", 90),
-            ("DRIVE", 1.9, 0.8),
+            ("DRIVE", 1.7, 1.5),
              ("PARK", 0.40, 0.80),   # (kind, right_distance_m, speed_mps)
         ]
         self.step_idx = 0
