@@ -36,29 +36,29 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 #  !!! TODO: 트랙에서 1회 계측해 숫자만 고치면 끝 !!!
 CHECKPOINT_EXPECTED = {
     # 시작 후 첫 횡단보도 앞
-    "POINT_1": {"classes": ["crosswalk"],
-                "bearing_deg": -5.82, "distance_m": 1.719,
+    "POINT_1": {"classes": ["go"],
+                "bearing_deg": 7.65, "distance_m": 1.003,
                 "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
-    "POINT_2": {"classes": ["crosswalk"],
-                "bearing_deg": -22.91, "distance_m": 0.952,
+    "POINT_2": {"classes": ["green", "red"],
+                "bearing_deg": -20.75, "distance_m": 1.777,
                 "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
-    "POINT_3": {"classes": ["crosswalk"],
-                "bearing_deg": -5.82, "distance_m": 1.719,
+    "POINT_3": {"classes": ["right"],
+                "bearing_deg": 6.55, "distance_m": 1.230,
                 "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
-    "POINT_4": {"classes": ["crosswalk"],
-                "bearing_deg": -22.91, "distance_m": 0.952,
+    "POINT_4": {"classes": ["park"],
+                "bearing_deg": -17.03, "distance_m": 2.005,
                 "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
-    "POINT_5": {"classes": ["crosswalk"],
-                "bearing_deg": 28.57, "distance_m": 1.629,
-                "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
+    # "POINT_5": {"classes": ["crosswalk"],
+    #             "bearing_deg": 28.57, "distance_m": 1.629,
+    #             "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
-    "POINT_6": {"classes": ["crosswalk"],
-                "bearing_deg": -6.85, "distance_m": 0.480,
-                "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
+    # "POINT_6": {"classes": ["crosswalk"],
+    #             "bearing_deg": -6.85, "distance_m": 0.480,
+    #             "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 }
 
 class SelfDrivingNode(Node):
@@ -155,8 +155,12 @@ class SelfDrivingNode(Node):
         #  STOP_PERCEIVE_LIGHT(frames, timeout)
         #  STOP_LOCALIZE(checkpoint_key)  ← 랜드마크로 위치 보정
         self.plan = [
-            ("STOP_LOCALIZE", "POINT_1"),
+            # ("STOP_LOCALIZE", "POINT_1"),
             # ("STOP_ALIGN_LANE",),                # ← 추가
+            ("DRIVE", 2.6, 1.0),
+            ("TURN_RIGHT", 90),
+            ("STOP_LOCALIZE", "POINT_1"),
+            # ("STOP_ALIGN_LANE",),
             ("DRIVE", 2.6, 1.0),
             ("TURN_RIGHT", 90),
             ("STOP_LOCALIZE", "POINT_2"),
@@ -165,16 +169,12 @@ class SelfDrivingNode(Node):
             ("TURN_RIGHT", 90),
             ("STOP_LOCALIZE", "POINT_3"),
             # ("STOP_ALIGN_LANE",),
-            ("DRIVE", 2.6, 1.0),
+            ("DRIVE", 1.4, 1.0),
             ("TURN_RIGHT", 90),
             ("STOP_LOCALIZE", "POINT_4"),
             # ("STOP_ALIGN_LANE",),
-            ("DRIVE", 1.4, 1.0),
-            ("TURN_RIGHT", 90),
-            ("STOP_LOCALIZE", "POINT_5"),
-            # ("STOP_ALIGN_LANE",),
             ("DRIVE", 1.7, 1.0),
-            ("STOP_LOCALIZE", "POINT_6"),
+            ("STOP_LOCALIZE", "POINT_5"),
             # ("STOP_ALIGN_LANE",),
             # ("DRIVE", 1.0, 1.5),
             # ("DRIVE", 1.0, 1.5),
