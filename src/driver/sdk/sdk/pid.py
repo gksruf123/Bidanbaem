@@ -101,6 +101,30 @@ class PID:
         self.integral = 0.0
         self.prev_error = 0.0
 
+    def step(self, error, dt=0.01):
+        """
+        Wrapper for self_driving compatibility.
+        Takes an error directly instead of feedback_value.
+        """
+        # proportional
+        self.PTerm = self.Kp * error
+        # integral
+        self.ITerm += error * dt
+        if self.ITerm < -self.windup_guard:
+            self.ITerm = -self.windup_guard
+        elif self.ITerm > self.windup_guard:
+            self.ITerm = self.windup_guard
+        # derivative
+        derivative = (error - self.last_error) / dt if dt > 0 else 0.0
+        self.DTerm = derivative
+
+        # remember
+        self.last_error = error
+
+        # output
+        self.output = self.PTerm + (self.Ki * self.ITerm) + (self.Kd * self.DTerm)
+        return self.output
+
 
 if __name__ == '__main__':
     x_pid = PID(P=0.2, I=0, D=0)
