@@ -25,7 +25,7 @@ def launch_setup(context):
         executable='yolo_detect',
         output='screen',
         parameters=[{
-            'classes': ['go', 'right', 'park', 'red', 'green', 'crosswalk'],
+            'classes': ['go', 'right', 'park', 'red', 'green'],
             'device': 'cpu',
             'model': 'best',
             'image_topic': '/ascamera/camera_publisher/rgb0/image',
