@@ -38,27 +38,27 @@ CHECKPOINT_EXPECTED = {
     # 시작 후 첫 횡단보도 앞
     "POINT_1": {"classes": ["crosswalk"],
                 "bearing_deg": -5.82, "distance_m": 1.719,
-                "bearing_tol_deg": 6.0, "dist_tol_m": 0.08},
+                "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
     "POINT_2": {"classes": ["crosswalk"],
                 "bearing_deg": -22.91, "distance_m": 0.952,
-                "bearing_tol_deg": 6.0, "dist_tol_m": 0.05},
+                "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
     "POINT_3": {"classes": ["crosswalk"],
                 "bearing_deg": -5.82, "distance_m": 1.719,
-                "bearing_tol_deg": 6.0, "dist_tol_m": 0.08},
+                "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
     "POINT_4": {"classes": ["crosswalk"],
                 "bearing_deg": -22.91, "distance_m": 0.952,
-                "bearing_tol_deg": 6.0, "dist_tol_m": 0.05},
+                "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
     "POINT_5": {"classes": ["crosswalk"],
                 "bearing_deg": 28.57, "distance_m": 1.629,
-                "bearing_tol_deg": 6.0, "dist_tol_m": 0.08},
+                "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 
     "POINT_6": {"classes": ["crosswalk"],
                 "bearing_deg": -6.85, "distance_m": 0.480,
-                "bearing_tol_deg": 6.0, "dist_tol_m": 0.05},
+                "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 }
 
 class SelfDrivingNode(Node):
@@ -594,7 +594,7 @@ class SelfDrivingNode(Node):
         # 4) 보정: (a) 각도 → (b) 거리
         # --- (a) 각도 ---
         target_bearing = expect["bearing_deg"]
-        bearing_tol = expect.get("bearing_tol_deg", 6.0)
+        bearing_tol = expect.get("bearing_tol_deg", 1.0)
         while time.time() < t_dead:
             err_deg = target_bearing - meas["bearing_deg"]
             if abs(err_deg) <= bearing_tol: break
@@ -608,7 +608,7 @@ class SelfDrivingNode(Node):
 
         # --- (b) 거리 ---
         target_dist = expect["distance_m"]
-        dist_tol = expect.get("dist_tol_m", 0.12)
+        dist_tol = expect.get("dist_tol_m", 0.1)
         while time.time() < t_dead:
             err = target_dist - meas["distance_m"]
             if abs(err) <= dist_tol: break

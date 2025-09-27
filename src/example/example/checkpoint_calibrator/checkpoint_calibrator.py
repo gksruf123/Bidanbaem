@@ -14,7 +14,7 @@ class Calibrator(Node):
         super().__init__("checkpoint_calibrator")
         self.declare_parameter("rgb_topic", "/ascamera/camera_publisher/rgb0/image")
         self.declare_parameter("depth_topic", "/ascamera/camera_publisher/depth0/image_raw")
-        self.declare_parameter("classes", ["crosswalk","go","right","green","red","park"])
+        self.declare_parameter("classes", ["go","right","green","red","park"])
         self.declare_parameter("hfov_deg", 69.0)
         self.declare_parameter("samples", 30)
 
