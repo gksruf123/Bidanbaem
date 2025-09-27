@@ -64,7 +64,7 @@ class Calibrator(Node):
         self.rgb = self.bridge.imgmsg_to_cv2(msg, "rgb8")
 
     def depth_cb(self, msg):
-        self.depth = self.bridge.imgmsg_to_cv2(msg)
+        self.depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')
 
     def obj_cb(self, msg):
         self.objs = msg.objects
