@@ -547,7 +547,7 @@ class SelfDrivingNode(Node):
         return "unknown"
 
     # ==================== 랜드마크 기반 위치 보정 ====================
-    def stop_and_localize(self, key, max_rotate_rate=0.8, max_drive=0.25, timeout=4.0):
+    def stop_and_localize(self, key, max_rotate_rate=0.8, max_drive=0.25, timeout=6.0):
         """
         1) 정지
         2) 기대 관측(CHECKPOINT_EXPECTED[key]) 불러옴
@@ -675,27 +675,21 @@ class SelfDrivingNode(Node):
 
         # --- (2) 측면 이동으로 잔여 오차 제거 (메카넘 전용) ---
         if self.machine_type == 'MentorPi_Mecanum':
+            # 각도는 유지(heading PID로 angular.z 작은 피드백), Δθ를 횡속도 입력으로 사용
             while time.time() < t_dead:
-                with self.img_lock:
-                    img = None if self.latest_image is None else self.latest_image.copy()
-                got = self._lane_center_x(img) if img is not None else None
-                if got is None:
+                meas = sense_once() or meas
+                err_rad = math.radians(expect["bearing_deg"] - meas["bearing_deg"])
+                if abs(math.degrees(err_rad)) < 1.0:  # 1도 이내면 종료
                     break
-                cx, w = got
-                err_px = (target_x_px - cx)
-                if abs(err_px) <= tol_px:
-                    break
-
-                # 픽셀 → 가로 이동 명령(단위-less를 그대로 PID 입력)
-                v_y = self.pid_lane_lat.step(err_px/float(w), dt=0.02)  # -1..+1 스케일
-                # 오른쪽이 음수(메카넘 convention) 되도록 부호 조정
-                v_y = float(np.clip(v_y, -0.25, 0.25))
+                # 좌우 스케일(너무 크면 출렁이니 작은 게 안전)
+                v_y = np.clip(0.6 * err_rad, -0.20, 0.20)  # 라디안 비례, 튠 포인트: 0.4~0.8
+                # 헤딩 유지 소량 피드백(필요시): w_cmd = self.pid_heading.step(0.0 - 0.0, dt=0.02)
                 twist = Twist()
-                twist.linear.y = -v_y  # target_x>cx(왼쪽으로 당겨야)면 +, 메카넘 우측은 음
+                twist.linear.y = v_y   # Δθ>0(왼쪽에 있음) → +y로 이동(하드웨어 부호 맞춰 조정)
                 self.mecanum_pub.publish(twist)
                 time.sleep(0.02)
-
             self._hard_stop()
+
         else:
             # Ackermann: 아주 작은 전/후 펄스 + 조향(= angular.z)로 근사
             # 필요시 여기 보간 로직을 추가해도 됨.
