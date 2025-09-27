@@ -42,7 +42,7 @@ def launch_setup(context):
         parameters=[{
             'rgb_topic': '/ascamera/camera_publisher/rgb0/image',
             'depth_topic': '/ascamera/camera_publisher/depth0/image_raw',
-            'classes': ['crosswalk', 'go', 'green', 'red'],
+            'classes': ['go', 'right', 'park', 'red', 'green', 'crosswalk'],
             'hfov_deg': 69.0,
             'samples': 30,
         }]
