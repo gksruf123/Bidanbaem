@@ -36,29 +36,29 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 #  !!! TODO: 트랙에서 1회 계측해 숫자만 고치면 끝 !!!
 CHECKPOINT_EXPECTED = {
     # 시작 후 첫 횡단보도 앞
-    "XWALK_1": {"classes": ["crosswalk", "go", "green", "red"],
-                "bearing_deg": 0.0, "distance_m": 1.20, "bearing_tol_deg": 6.0, "dist_tol_m": 0.12},
-    # 1번 코너 우회전 직후
-    "CORNER_1": {"classes": ["go", "right", "green", "red"],
-                 "bearing_deg": -5.0, "distance_m": 1.30, "bearing_tol_deg": 7.0, "dist_tol_m": 0.15},
-    # 두 번째 횡단보도 앞
-    "XWALK_2": {"classes": ["crosswalk", "go"],
-                "bearing_deg": 0.0, "distance_m": 1.10, "bearing_tol_deg": 6.0, "dist_tol_m": 0.12},
-    # 2번 코너 우회전 직후
-    "CORNER_2": {"classes": ["right", "green", "red"],
-                 "bearing_deg": -4.0, "distance_m": 1.25, "bearing_tol_deg": 7.0, "dist_tol_m": 0.15},
-    # 세 번째 횡단보도 앞
-    "XWALK_3": {"classes": ["crosswalk", "go"],
-                "bearing_deg": 1.0, "distance_m": 1.10, "bearing_tol_deg": 6.0, "dist_tol_m": 0.12},
-    # 3번 코너 우회전 직후
-    "CORNER_3": {"classes": ["right", "go"],
-                 "bearing_deg": -3.0, "distance_m": 1.25, "bearing_tol_deg": 7.0, "dist_tol_m": 0.15},
-    # 네 번째 횡단보도 앞
-    "XWALK_4": {"classes": ["crosswalk", "go"],
-                "bearing_deg": 0.0, "distance_m": 1.05, "bearing_tol_deg": 6.0, "dist_tol_m": 0.12},
-    # 4번 코너 우회전 직후 (주차 전 자세 가다듬기)
-    "CORNER_4": {"classes": ["park", "park", "go"],
-                 "bearing_deg": -2.0, "distance_m": 1.30, "bearing_tol_deg": 7.0, "dist_tol_m": 0.15},
+    "POINT_1": {"classes": ["crosswalk"],
+                "bearing_deg": -5.82, "distance_m": 1.719,
+                "bearing_tol_deg": 6.0, "dist_tol_m": 0.08},
+
+    "POINT_2": {"classes": ["crosswalk"],
+                "bearing_deg": -22.91, "distance_m": 0.952,
+                "bearing_tol_deg": 6.0, "dist_tol_m": 0.05},
+
+    "POINT_3": {"classes": ["crosswalk"],
+                "bearing_deg": -5.82, "distance_m": 1.719,
+                "bearing_tol_deg": 6.0, "dist_tol_m": 0.08},
+
+    "POINT_4": {"classes": ["crosswalk"],
+                "bearing_deg": -22.91, "distance_m": 0.952,
+                "bearing_tol_deg": 6.0, "dist_tol_m": 0.05},
+
+    "POINT_5": {"classes": ["crosswalk"],
+                "bearing_deg": 28.57, "distance_m": 1.629,
+                "bearing_tol_deg": 6.0, "dist_tol_m": 0.08},
+
+    "POINT_6": {"classes": ["crosswalk"],
+                "bearing_deg": -6.85, "distance_m": 0.480,
+                "bearing_tol_deg": 6.0, "dist_tol_m": 0.05},
 }
 
 class SelfDrivingNode(Node):
@@ -155,35 +155,35 @@ class SelfDrivingNode(Node):
         #  STOP_PERCEIVE_LIGHT(frames, timeout)
         #  STOP_LOCALIZE(checkpoint_key)  ← 랜드마크로 위치 보정
         self.plan = [
-            ("DRIVE", 1.0, 1.5),
-            ("STOP_LOCALIZE", "XWALK_1"),
+            ("STOP_LOCALIZE", "{POINT_1"),
             ("STOP_ALIGN_LANE",),                # ← 추가
-            ("DRIVE", 1.6, 1.5),
+            ("DRIVE", 2.6, 1.5),
             ("TURN_RIGHT", 90),
-            ("STOP_LOCALIZE", "CORNER_1"),
+            ("STOP_LOCALIZE", "POINT_2"),
             ("STOP_ALIGN_LANE",),
-            ("DRIVE", 0.5, 1.5),
-            ("STOP_LOCALIZE", "XWALK_2"),
-            ("STOP_ALIGN_LANE",),
-            ("DRIVE", 1.9, 1.5),
+            ("DRIVE", 2.6, 1.5),
             ("TURN_RIGHT", 90),
-            ("STOP_LOCALIZE", "CORNER_2"),
+            ("STOP_LOCALIZE", "POINT_3"),
             ("STOP_ALIGN_LANE",),
-            ("DRIVE", 1.6, 1.5),
-            ("STOP_LOCALIZE", "XWALK_3"),
-            ("STOP_ALIGN_LANE",),
-            ("DRIVE", 1.0, 1.5),
+            ("DRIVE", 2.6, 1.5),
             ("TURN_RIGHT", 90),
-            ("STOP_LOCALIZE", "CORNER_3"),
+            ("STOP_LOCALIZE", "POINT_4"),
             ("STOP_ALIGN_LANE",),
-            ("DRIVE", 1.0, 1.5),
-            ("STOP_LOCALIZE", "XWALK_4"),
-            ("STOP_ALIGN_LANE",),
-            ("DRIVE", 0.3, 1.5),
+            ("DRIVE", 1.4, 1.5),
             ("TURN_RIGHT", 90),
-            ("STOP_LOCALIZE", "CORNER_4"),
+            ("STOP_LOCALIZE", "POINT_5"),
             ("STOP_ALIGN_LANE",),
             ("DRIVE", 1.7, 1.5),
+            ("STOP_LOCALIZE", "POINT_6"),
+            ("STOP_ALIGN_LANE",),
+            # ("DRIVE", 1.0, 1.5),
+            # ("DRIVE", 1.0, 1.5),
+            # ("STOP_LOCALIZE", "XWALK_4"),
+            # ("STOP_ALIGN_LANE",),
+            # ("DRIVE", 0.3, 1.5),
+            # ("STOP_LOCALIZE", "CORNER_4"),
+            # ("STOP_ALIGN_LANE",),
+            # ("DRIVE", 1.7, 1.5),
             ("PARK", 0.40, 0.80),
         ]
         self.step_idx = 0
