@@ -24,15 +24,14 @@ def launch_setup(context):
         package='yolov5_ros2',
         executable='yolo_detect',
         output='screen',
-        parameters=[{
-            'classes': ['go', 'right', 'park', 'red', 'green', 'crosswalk'],
-            'device': 'cpu',
-            'model': 'best',
-            'image_topic': '/ascamera/camera_publisher/rgb0/image',
-            'camera_info_topic': '/camera/camera_info',
-            'camera_info_file': f"{package_share_directory}/config/camera_info.yaml",
-            'pub_result_img': True,
-        }]
+        parameters=[{'classes': ['go', 'right', 'park', 'red', 'green', 'crosswalk']},
+            {"device": "cpu",
+            "model": "best",
+            "image_topic": "/ascamera/camera_publisher/rgb0/image",
+            "camera_info_topic": "/camera/camera_info",
+            "camera_info_file": f"{package_share_directory}/config/camera_info.yaml",
+            # "show_result": True,
+            "pub_result_img": True}]
     )
 
     calibrator_node = Node(
