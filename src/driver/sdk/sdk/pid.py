@@ -97,6 +97,10 @@ class PID:
         """
         self.sample_time = sample_time
 
+    def reset(self):
+        self.integral = 0.0
+        self.prev_error = 0.0
+
 
 if __name__ == '__main__':
     x_pid = PID(P=0.2, I=0, D=0)
