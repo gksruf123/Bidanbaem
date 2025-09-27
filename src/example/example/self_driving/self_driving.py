@@ -51,14 +51,6 @@ CHECKPOINT_EXPECTED = {
     "POINT_4": {"classes": ["park"],
                 "bearing_deg": -17.03, "distance_m": 2.005,
                 "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
-
-    # "POINT_5": {"classes": ["crosswalk"],
-    #             "bearing_deg": 28.57, "distance_m": 1.629,
-    #             "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
-
-    # "POINT_6": {"classes": ["crosswalk"],
-    #             "bearing_deg": -6.85, "distance_m": 0.480,
-    #             "bearing_tol_deg": 1.0, "dist_tol_m": 0.05},
 }
 
 class SelfDrivingNode(Node):
@@ -174,7 +166,7 @@ class SelfDrivingNode(Node):
             ("STOP_LOCALIZE", "POINT_4"),
             # ("STOP_ALIGN_LANE",),
             ("DRIVE", 1.7, 1.0),
-            ("STOP_LOCALIZE", "POINT_5"),
+            # ("STOP_LOCALIZE", "POINT_5"),
             # ("STOP_ALIGN_LANE",),
             # ("DRIVE", 1.0, 1.5),
             # ("DRIVE", 1.0, 1.5),
@@ -547,7 +539,7 @@ class SelfDrivingNode(Node):
         return "unknown"
 
     # ==================== 랜드마크 기반 위치 보정 ====================
-    def stop_and_localize(self, key, max_rotate_rate=0.8, max_drive=0.25, timeout=6.0):
+    def stop_and_localize(self, key, max_rotate_rate=0.8, max_drive=0.25, timeout=15.0):
         """
         1) 정지
         2) 기대 관측(CHECKPOINT_EXPECTED[key]) 불러옴
