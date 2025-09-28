@@ -307,7 +307,7 @@ class SelfDrivingNode(Node):
                                 self.count_turn = 0
                                 self.start_turn_time_stamp = time.time()
                             if self.machine_type != 'MentorPi_Acker':
-                                twist.angular.z = -2.315  # turning speed
+                                twist.angular.z = -2.5 / 3.0 * turn_right  # turning speed
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
                         else:  # use PID algorithm to correct turns on a straight road
@@ -315,10 +315,10 @@ class SelfDrivingNode(Node):
                             if time.time() - self.start_turn_time_stamp > 2 and self.start_turn:
                                 self.start_turn = False
                             if not self.start_turn:
-                                self.pid.SetPoint = 235  # the coordinate of the line while the robot is in the middle of the lane
+                                self.pid.SetPoint = 250  # the coordinate of the line while the robot is in the middle of the lane
                                 self.pid.update(lane_x)
                                 if self.machine_type != 'MentorPi_Acker':
-                                    twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
+                                    twist.angular.z = common.set_range(self.pid.output, -0.15, 0.15)
                                 else:
                                     twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
                             else:
