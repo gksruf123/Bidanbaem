@@ -33,7 +33,8 @@ class SelfDrivingNode(Node):
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
         self.name = name
         self.is_running = True
-        self.is_start = False
+        # self.is_start = False
+        self.is_start = True
         self.pid = pid.PID(0.4, 0.0, 0.05)
         self.param_init()
 
