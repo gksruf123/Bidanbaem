@@ -251,7 +251,7 @@ class SelfDrivingNode(Node):
                 twist = Twist()
 
                 if self.is_start: # 맨 처음 'green' 감지
-                    pass
+                    twist.linear.x = 1.0
                     # # if detecting the zebra crossing, start to slow down
                     # self.get_logger().info('\033[1;33m%s\033[0m' % self.crosswalk_distance)
                     # if 70 < self.crosswalk_distance and not self.start_slow_down:  # The robot starts to slow down only when it is close enough to the zebra crossing
