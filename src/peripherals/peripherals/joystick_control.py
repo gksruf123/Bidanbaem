@@ -28,8 +28,8 @@ class JoystickController(Node):
         super().__init__(name)
 
         self.min_value = 0.1
-        self.declare_parameter('max_linear', 0.7)
-        self.declare_parameter('max_angular', 3.0)
+        self.declare_parameter('max_linear', 2.0)
+        self.declare_parameter('max_angular', 10.0)
         self.declare_parameter('disable_servo_control', True)
 
         self.max_linear = self.get_parameter('max_linear').value
@@ -38,7 +38,7 @@ class JoystickController(Node):
         self.machine = os.environ['MACHINE_TYPE']
         self.get_logger().info('\033[1;32m%s\033[0m' % self.max_linear)
         self.servo_state_pub = self.create_publisher(SetPWMServoState, 'ros_robot_controller/pwm_servo/set_state', 1)
-        self.joy_sub = self.create_subscription(Joy, '/joy', self.joy_callback, 1)
+        self.joy_sub = self.create_subscription(Joy, '/joy', self.joy_callback, 3)
         self.buzzer_pub = self.create_publisher(BuzzerState, 'ros_robot_controller/set_buzzer', 1)
         self.mecanum_pub = self.create_publisher(Twist, 'controller/cmd_vel', 1)
 
@@ -53,6 +53,7 @@ class JoystickController(Node):
         return response
 
     def axes_callback(self, axes):
+        #print(axes)
         twist = Twist()
         if abs(axes['lx']) < self.min_value:
             axes['lx'] = 0
@@ -64,15 +65,15 @@ class JoystickController(Node):
             axes['ry'] = 0
 
         if self.machine == 'MentorPi_Mecanum':
-            twist.linear.y = val_map(axes['lx'], -1, 1, -self.max_linear, self.max_linear) 
+            #            twist.linear.y = val_map(axes['lx'], -1, 1, -self.max_linear, self.max_linear) 
             twist.linear.x = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            twist.angular.z = val_map(axes['rx'], -1, 1, -self.max_angular, self.max_angular)
+            twist.angular.z = val_map(axes['ry'], -1, 1, -self.max_angular, self.max_angular)
         elif self.machine == 'JetRover_Tank':
             twist.linear.x = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
             twist.angular.z = val_map(axes['rx'], -1, 1, -self.max_angular, self.max_angular)
         elif self.machine == 'MentorPi_Acker':
             twist.linear.x = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            steering_angle = val_map(axes['rx'], -1, 1, -math.radians(322 / 2000 * 180), math.radians(322 / 2000 * 180))
+            steering_angle = val_map(axes['ry'], -1, 1, -math.radians(322 / 2000 * 180), math.radians(322 / 2000 * 180))
             
             if steering_angle == 0:  
                 twist.angular.z = 0.0
