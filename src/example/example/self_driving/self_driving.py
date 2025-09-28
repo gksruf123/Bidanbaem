@@ -395,7 +395,7 @@ class SelfDrivingNode(Node):
                     self.traffic_signs_status = i
                     if class_name == 'green':
                         self.count_start += 1
-                        # self.get_logger().info(f"\033[1;32m{class_name}: {self.count_start}\033[0m")
+                        self.get_logger().info(f"\033[1;32m{class_name}: {self.count_start}\033[0m")
                         if self.count_start >= 3:
                             self.is_start = True
                             print_cnt = 0
