@@ -315,7 +315,7 @@ class SelfDrivingNode(Node):
                             if time.time() - self.start_turn_time_stamp > 2 and self.start_turn:
                                 self.start_turn = False
                             if not self.start_turn:
-                                self.pid.SetPoint = 80  # the coordinate of the line while the robot is in the middle of the lane
+                                self.pid.SetPoint = 235  # the coordinate of the line while the robot is in the middle of the lane
                                 self.pid.update(lane_x)
                                 if self.machine_type != 'MentorPi_Acker':
                                     twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
@@ -326,8 +326,7 @@ class SelfDrivingNode(Node):
                                     twist.angular.z = 0.15 * math.tan(-0.5061) / 0.145
                         self.get_logger().info(f"\033[1;31mtwist.linear.x: {twist.linear.x}\033[0m")
                         self.get_logger().info(f"\033[1;31mtwist.angular.z: {twist.angular.z}\033[0m")
-                        #self.mecanum_pub.publish(twist)  # 잠시 꺼둠
-                        self.mecanum_pub.publish(Twist())  
+                        self.mecanum_pub.publish(twist)
                     else:
                         self.pid.clear()
 
