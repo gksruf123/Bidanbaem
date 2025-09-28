@@ -14,7 +14,13 @@ from cv_bridge import CvBridge
 
 bridge = CvBridge()
 
-lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
+# lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
+username = os.getenv("USER")  # 현재 로그인한 사용자 이름 가져오기
+if username == "ubuntu":  # 라즈베리파이
+    config_path = "/home/ubuntu/software/lab_tool/lab_config.yaml"
+else:  # 내 PC (intel 사용자)
+    config_path = "/home/intel/Study/mid_competition/Bidanbaem/software/lab_tool/lab_config.yaml"
+lab_data = common.get_yaml_data(config_path)
 
 class LaneDetector(object):
     def __init__(self, color):

@@ -164,6 +164,7 @@ class YoloV5Ros2(Node):
         object_msg = ObjectsInfo()
         object_msg.objects = objects_info
         self.object_pub.publish(object_msg)
+        self.get_logger().info(f"\033[1;31m************************************\033[0m")
 
         # Display results if needed.
         if self.show_result:
