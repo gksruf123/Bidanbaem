@@ -296,6 +296,8 @@ class SelfDrivingNode(Node):
 
                     # line following processing
                     result_image, lane_angle, lane_x, turn_right = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
+                    
+                    self.get_logger().info(f"\033[1;31mlane_x: {lane_x}\033[0m")
                     if lane_x >= 0 and not self.stop:  
                         # if lane_x > 150:
                         if turn_right:
@@ -322,7 +324,7 @@ class SelfDrivingNode(Node):
                             else:
                                 if self.machine_type == 'MentorPi_Acker':
                                     twist.angular.z = 0.15 * math.tan(-0.5061) / 0.145
-                        self.get_logger().info(f"\033[1;32mtwist.linear.x: {twist.linear.x}\033[0m")
+                        self.get_logger().info(f"\033[1;31mtwist.linear.x: {twist.linear.x}\033[0m")
                         self.get_logger().info(f"\033[1;31mtwist.angular.z: {twist.angular.z}\033[0m")
                         #self.mecanum_pub.publish(twist)  # 잠시 꺼둠
                         self.mecanum_pub.publish(Twist())  
