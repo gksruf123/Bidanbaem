@@ -398,10 +398,10 @@ class SelfDrivingNode(Node):
                         if self.count_start >= 3:
                             self.is_start = True
                             # self.get_logger().info(f"\033[1;31m{class_name}: {self.is_start}\033[0m")
-                if class_name == 'crosswalk':
-                    self.get_logger().info(f"\033[1;31m{class_name}: {cw_distance}\033[0m")
-                else:
-                    self.get_logger().info(f"\033[1;32m{class_name}: {cw_distance}\033[0m")
+                # if class_name == 'crosswalk':
+                #     self.get_logger().info(f"\033[1;31m{class_name}: {cw_distance}\033[0m")
+                # else:
+                #     self.get_logger().info(f"\033[1;32m{class_name}: {cw_distance}\033[0m")
                
 
                 # self.get_logger().info('\033[1;32m%s\033[0m' % class_name)
