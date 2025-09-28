@@ -28,7 +28,7 @@ class LaneDetector(object):
         self.target_color = color
         # ROI for lane detection
         if os.environ['DEPTH_CAMERA_TYPE'] == 'ascamera':
-            self.rois = ((338, 360, 0, 320, 0.67), (292, 315, 0, 320, 0.2), (248, 270, 0, 320, 0.1), (200, 222, 0, 320, 0.01), (158, 180, 0, 320, 0.01), (100, 122, 0, 320, 0.01))
+            self.rois = ((338, 360, 0, 320, 0.68), (292, 315, 0, 320, 0.2), (248, 270, 0, 320, 0.1), (200, 222, 0, 320, 0.01), (158, 180, 0, 320, 0.01))
         else:
             self.rois = ((450, 480, 0, 320, 0.7), (390, 480, 0, 320, 0.2), (330, 480, 0, 320, 0.1))
         self.weight_sum = 1.0
@@ -174,10 +174,8 @@ class LaneDetector(object):
         center_pos = centroid_sum / self.weight_sum  # calculate the center point based on the proportion
         angle = math.degrees(-math.atan((center_pos - (w / 2.0)) / (h / 2.0)))
 
-        if center_x[-3] == -1:
-            turn_right = 3
-        elif center_x[-2] == -1:
-            turn_right = 2
+        if center_x[-2] == -1:
+            turn_right = 6
         elif center_x[-1] == -1:
             turn_right = 1
         else:

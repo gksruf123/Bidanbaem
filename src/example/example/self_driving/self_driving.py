@@ -307,7 +307,7 @@ class SelfDrivingNode(Node):
                                 self.count_turn = 0
                                 self.start_turn_time_stamp = time.time()
                             if self.machine_type != 'MentorPi_Acker':
-                                twist.angular.z = -2.5 / 3.0 * turn_right  # turning speed
+                                twist.angular.z = -2.5 / 6.0 * float(turn_right)  # turning speed
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
                         else:  # use PID algorithm to correct turns on a straight road
