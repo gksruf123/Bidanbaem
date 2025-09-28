@@ -46,6 +46,7 @@ class SelfDrivingNode(Node):
         self.colors = common.Colors()
         # signal.signal(signal.SIGINT, self.shutdown)
         self.machine_type = os.environ.get('MACHINE_TYPE')
+        self.get_logger().info(f"\033[1;31mself.machine_type: {self.machine_type}\033[0m")
         self.lane_detect = lane_detect.LaneDetector("yellow")
 
         self.mecanum_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
@@ -304,7 +305,7 @@ class SelfDrivingNode(Node):
                                 self.count_turn = 0
                                 self.start_turn_time_stamp = time.time()
                             if self.machine_type != 'MentorPi_Acker':
-                                twist.angular.z = -0.45  # turning speed
+                                twist.angular.z = -0.9  # turning speed
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
                         else:  # use PID algorithm to correct turns on a straight road
@@ -315,13 +316,16 @@ class SelfDrivingNode(Node):
                                 self.pid.SetPoint = 130  # the coordinate of the line while the robot is in the middle of the lane
                                 self.pid.update(lane_x)
                                 if self.machine_type != 'MentorPi_Acker':
-                                    twist.angular.z = common.set_range(self.pid.output, -0.1, 0.1)
+                                    twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
                                 else:
                                     twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
                             else:
                                 if self.machine_type == 'MentorPi_Acker':
                                     twist.angular.z = 0.15 * math.tan(-0.5061) / 0.145
-                        self.mecanum_pub.publish(twist)  
+                        self.get_logger().info(f"\033[1;32mtwist.linear.x: {twist.linear.x}\033[0m")
+                        self.get_logger().info(f"\033[1;31mtwist.angular.z: {twist.angular.z}\033[0m")
+                        #self.mecanum_pub.publish(twist)  # 잠시 꺼둠
+                        self.mecanum_pub.publish(Twist())  
                     else:
                         self.pid.clear()
 
@@ -390,10 +394,10 @@ class SelfDrivingNode(Node):
                     self.traffic_signs_status = i
                     if class_name == 'green':
                         self.count_start += 1
-                        self.get_logger().info(f"\033[1;32m{class_name}: {self.count_start}\033[0m")
+                        # self.get_logger().info(f"\033[1;32m{class_name}: {self.count_start}\033[0m")
                         if self.count_start >= 3:
                             self.is_start = True
-                            self.get_logger().info(f"\033[1;31m{class_name}: {self.is_start}\033[0m")
+                            # self.get_logger().info(f"\033[1;31m{class_name}: {self.is_start}\033[0m")
                 # if class_name == 'crosswalk':
                 #     self.get_logger().info(f"\033[1;31m{class_name}: {cw_distance}\033[0m")
                 # else:
