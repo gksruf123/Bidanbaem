@@ -28,7 +28,7 @@ class LaneDetector(object):
         self.target_color = color
         # ROI for lane detection
         if os.environ['DEPTH_CAMERA_TYPE'] == 'ascamera':
-            self.rois = ((338, 360, 0, 320, 0.7), (292, 315, 0, 320, 0.2), (248, 270, 0, 320, 0.1))
+            self.rois = ((338, 360, 0, 320, 0.69), (292, 315, 0, 320, 0.2), (248, 270, 0, 320, 0.1), (0, 100, 0, 320, 0.01))
         else:
             self.rois = ((450, 480, 0, 320, 0.7), (390, 480, 0, 320, 0.2), (330, 480, 0, 320, 0.1))
         self.weight_sum = 1.0
@@ -142,6 +142,7 @@ class LaneDetector(object):
         h, w = image.shape[:2]
         max_center_x = -1
         center_x = []
+        turn_right = False
         for roi in self.rois:
             blob = image[roi[0]:roi[1], roi[2]:roi[3]]  # crop ROI
             contours = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]  # find contours
@@ -172,8 +173,11 @@ class LaneDetector(object):
             return result_image, None, max_center_x
         center_pos = centroid_sum / self.weight_sum  # calculate the center point based on the proportion
         angle = math.degrees(-math.atan((center_pos - (w / 2.0)) / (h / 2.0)))
+
+        if center_x[-1] == -1:
+            turn_right = True
         
-        return result_image, angle, max_center_x
+        return result_image, angle, max_center_x, turn_right
 
 image_queue = queue.Queue(2)
 def image_callback(ros_image):

@@ -294,9 +294,10 @@ class SelfDrivingNode(Node):
                     #         self.count_park = 0  
 
                     # line following processing
-                    result_image, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
+                    result_image, lane_angle, lane_x, turn_right = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
                     if lane_x >= 0 and not self.stop:  
-                        if lane_x > 150:  
+                        # if lane_x > 150:
+                        if turn_right:
                             self.count_turn += 1
                             if self.count_turn > 5 and not self.start_turn:
                                 self.start_turn = True
