@@ -11,8 +11,10 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 import cv2
 from message_filters import Subscriber, ApproximateTimeSynchronizer
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, PoseStamped, Quaternion, Point
 from nav_msgs.msg import Odometry
+from nav2_msgs.action import NavigateToPose
+from rclpy.action import ActionClient
 import numpy as np
 import queue
 
@@ -20,6 +22,18 @@ import queue
 #MAP_Y = 2800
 #ROAD_W = 450
 #CROSSWALK_H = 110
+
+import math
+from geometry_msgs.msg import Quaternion
+
+def yaw_to_quaternion(yaw):
+    # yaw in radians
+    q = Quaternion()
+    q.x = 0.0
+    q.y = 0.0
+    q.z = math.sin(yaw/2.0)
+    q.w = math.cos(yaw/2.0)
+    return q
 
 class Navigation(Node):
     def __init__(self, name='MS_Self_Drive'):
@@ -29,6 +43,14 @@ class Navigation(Node):
         self.image_queue = queue.Queue(1)
         self.msg_queue = queue.Queue(1)
         self.cv_bridge = CvBridge()
+
+        self.client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
+        self.client.wait_for_server()
+        while True:
+            self.send_goal(0.1, 0, 0.0)
+            time.sleep(5)
+            self.send_goal(0,0,0.0)
+            time.sleep(5)
  
         self.odom_sub = Subscriber(self, Odometry, '/odom')
         self.rgb_sub = Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image')
@@ -59,6 +81,7 @@ class Navigation(Node):
 
         self.wheel_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
         self.timer = self.create_timer(0.0, self.init_process) # run init_process asap
+        
         # threading.Thread(target=self.worker, daemon=True).start()  
 
     def direct(self, rgb_m, dep_m, odom_m:Odometry):
@@ -179,6 +202,23 @@ class Navigation(Node):
             cv2.circle(out, target_point, 1, (0,0,255), 1)
             cv2.putText(out, f'd:{image_dep[target_point[1]+3,target_point[0]]}', target_point,
                         cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (255,255,255), 1)
+            #H64.4°×V51.7°
+            # W, H = w, h
+            # u, v = target_point[0], target_point[1]
+            # Z = image_dep[v, u]
+            # theta_x = (u - W/2) / (W/2) * (64.4 / 2)
+            # theta_y = (v - H/2) / (H/2) * (51.7 / 2)
+
+            # # Convert degrees to radians
+            # theta_x = math.radians(theta_x)
+            # theta_y = math.radians(theta_y)
+
+            # # Camera frame coordinates
+            # X_cam = Z * math.tan(theta_x)  # left/right
+            # Y_cam = Z * math.tan(theta_y)  # up/down
+            # Z_cam = Z            
+
+            # cv2.putText(out, f'{X_cam:.2f}, {Y_cam:.2f}, {Z_cam:.2f}', (0, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255),1)
         out = cv2.resize(out, (640, 480), interpolation=cv2.INTER_NEAREST_EXACT)
         stamp = odom_m.header.stamp.nanosec
         pos = odom_m.pose.pose.position
@@ -201,11 +241,16 @@ class Navigation(Node):
         cv2.imshow('lab mask', out)
         cv2.moveWindow('lab mask', 500, 0)
 
-        
-
         cv2.waitKey(1)
 
-
+    def send_goal(self, node, x, y, yaw=0.0):
+        print(f'goal: {x},{y},{yaw}')
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose.headerb.frame_id = 'odom'  # must match Nav2 global frame
+        goal_msg.pose.header.stamp = node.get_clock().now().to_msg()
+        goal_msg.pose.pose.position = Point(x=x, y=y, z=0.0)
+        goal_msg.pose.pose.orientation = yaw_to_quaternion(yaw)  # helper function
+        self.client.send_goal_async(goal_msg)
 
         
     def enqueue(self, rgb, depth):

@@ -26,7 +26,7 @@ setup(
         'console_scripts': [
             'cvtest=cvtest.cvtest:main',
             'labslider=cvtest.labslider:main',
-						'tmp=cvtest.tmp:main
+			'tmp=cvtest.tmp:main'
         ],
     },
 )
