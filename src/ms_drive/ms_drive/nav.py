@@ -35,6 +35,13 @@ def yaw_to_quaternion(yaw):
     q.w = math.cos(yaw/2.0)
     return q
 
+def yaw_from_quaternion_deg(q):
+    # q is geometry_msgs.msg.Quaternion
+    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+    return math.degrees(yaw)
+
 class Navigation(Node):
     def __init__(self, name='MS_Self_Drive'):
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
@@ -44,13 +51,8 @@ class Navigation(Node):
         self.msg_queue = queue.Queue(1)
         self.cv_bridge = CvBridge()
 
-        self.client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
-        self.client.wait_for_server()
-        while True:
-            self.send_goal(0.1, 0, 0.0)
-            time.sleep(5)
-            self.send_goal(0,0,0.0)
-            time.sleep(5)
+        # self.client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
+        # self.client.wait_for_server()
  
         self.odom_sub = Subscriber(self, Odometry, '/odom')
         self.rgb_sub = Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image')
@@ -78,14 +80,29 @@ class Navigation(Node):
         self.last_print = time.time()
         self.qc = 0
 
+        self.status = 'stop'
+
 
         self.wheel_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
         self.timer = self.create_timer(0.0, self.init_process) # run init_process asap
         
         # threading.Thread(target=self.worker, daemon=True).start()  
 
+    def print_odom(self, odom_m):
+        stamp = odom_m.header.stamp.nanosec
+        pos = odom_m.pose.pose.position
+        ori = odom_m.pose.pose.orientation
+        twist_l = odom_m.twist.twist.linear
+        twist_a = odom_m.twist.twist.angular
+        print(f'timestamp: {stamp}')
+        print(f'pos: (x:{pos.x:.3f}, y:{pos.y:.3f})')
+        print(f'ang: ({yaw_from_quaternion_deg(ori):.2f})')
+        print(f'twist_l: (x:{twist_l.x:.3f}, y:{twist_l.y:.2f})')
+        print(f'twist_a: (z:{twist_a.z:.2f})')
+
     def direct(self, rgb_m, dep_m, odom_m:Odometry):
         # print('dir')
+        self.print_odom(odom_m)
         self.proc(rgb_m, dep_m, odom_m)
 
     def ff_mask(self, mask, point):
@@ -97,7 +114,7 @@ class Navigation(Node):
 
     def proc(self, rgb_m, dep_m, odom_m:Odometry = None):
         image_bgr = self.cv_bridge.imgmsg_to_cv2(rgb_m, 'bgr8')
-        cv2.imshow('orig', image_bgr)
+        # cv2.imshow('orig', image_bgr)
         image_dep = self.cv_bridge.imgmsg_to_cv2(dep_m, '16UC1')
 
         oh, ow = image_bgr.shape[:2]
@@ -190,7 +207,11 @@ class Navigation(Node):
                 if len(ll) and len(lr):
                     lx = ll[-1]
                     rx = lr[0]
-                    target_point = ((lx+rx)//2, _y)
+                    if rx - lx < 100:
+                        target_point = None
+                        break
+                    else:
+                        target_point = ((lx+rx)//2, _y)
                     cv2.line(mask_lab, (lx, _y), (rx, _y), 128, 2)
                     break
 
@@ -198,10 +219,18 @@ class Navigation(Node):
 
         out = cv2.cvtColor(mask_lab, cv2.COLOR_GRAY2BGR)
         if target_point:
-            print(target_point)
             cv2.circle(out, target_point, 1, (0,0,255), 1)
             cv2.putText(out, f'd:{image_dep[target_point[1]+3,target_point[0]]}', target_point,
                         cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (255,255,255), 1)
+            
+            _y = target_point[1]
+            if target_point[1] > h//2:
+                while _y > 0:
+                    if mask_lab[_y, target_point[0]]:
+                        self.status = 'stop'
+                        print('stop')
+                        self.wheel_pub.publish(Twist())
+                    _y -= 1
             #H64.4°×V51.7°
             # W, H = w, h
             # u, v = target_point[0], target_point[1]
@@ -230,7 +259,7 @@ class Navigation(Node):
         cv2.putText(out, f'pos: (x:{pos.x:.3f}, y:{pos.y:.3f})', (20, 40), 
                     cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (0, 255, 255))
         
-        cv2.putText(out, f'ang: ({math.degrees(math.atan2(2*(ori.w*ori.z), 1-2*(ori.z*ori.z))):.2f})', (20, 60), 
+        cv2.putText(out, f'ang: ({yaw_from_quaternion_deg(ori):.2f})', (20, 60), 
                     cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (0, 255, 255))
         # cv2.putText(out, f'ori: (x:{ori.x:.2f}, y:{ori.y:.2f}, z:{ori.z:.2f})', (20, 60), 
         #             cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (0, 255, 255))
@@ -239,7 +268,8 @@ class Navigation(Node):
         cv2.putText(out, f'twist_a: (z:{twist_a.z:.2f})', (20, 100), 
                     cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (0, 255, 255))
         cv2.imshow('lab mask', out)
-        cv2.moveWindow('lab mask', 500, 0)
+
+        
 
         cv2.waitKey(1)
 
@@ -284,6 +314,8 @@ class Navigation(Node):
         pass
 
 def main():
+    cv2.namedWindow('lab mask')
+    cv2.moveWindow('lab mask', 500, 0)
     rclpy.init(args=None)
     node = Navigation()
     rclpy.spin(node)
