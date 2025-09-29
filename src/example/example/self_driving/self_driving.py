@@ -15,8 +15,10 @@ import sdk.pid as pid
 import sdk.fps as fps
 from rclpy.node import Node
 import sdk.common as common
+from math import atan2, asin, cos, pi, sin
 # from app.common import Heart
 from cv_bridge import CvBridge
+from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Twist
 from interfaces.msg import ObjectsInfo
@@ -52,6 +54,7 @@ class SelfDrivingNode(Node):
         self.mecanum_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
         self.servo_state_pub = self.create_publisher(SetPWMServoState, 'ros_robot_controller/pwm_servo/set_state', 1)
         self.result_publisher = self.create_publisher(Image, '~/image_result', 1)
+        self.odom_subscriber = self.create_subscription(Odometry, 'odom_', self.odom_callback, 10)
 
         self.create_service(Trigger, '~/enter', self.enter_srv_callback) # enter the game
         self.create_service(Trigger, '~/exit', self.exit_srv_callback) # exit the game
@@ -106,6 +109,7 @@ class SelfDrivingNode(Node):
         self.turn_right = False  # right turning sign
 
         self.count_start = 0
+        self.is_rotate_90 = False
 
         self.last_park_detect = False
         self.count_park = 0  
@@ -136,6 +140,29 @@ class SelfDrivingNode(Node):
         while rclpy.ok():
             if future.done() and future.result():
                 return future.result()
+
+    def quat_to_yaw(q):
+        # q: geometry_msgs/Quaternion
+        # 표준 변환 (Z축 회전만 고려)
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        return atan2(siny_cosp, cosy_cosp)  # 라디안
+    
+    def odom_callback(self, msg: Odometry):
+        self.yaw = self.quat_to_yaw(msg.pose.pose.orientation)
+
+    def check_90_rotate(self, cnt):
+        if cnt == 0:
+            self.start_yaw = self.yaw
+            self.get_logger().info(f"\033[1;32m기준 yaw 설정: {self.start_yaw:.2f} rad\033[0m")
+            return
+        diff = atan2(sin(self.yaw - self.start_yaw), cos(self.yaw - self.start_yaw))  # -pi~pi
+        deg = diff * 180.0 / pi
+        self.get_logger().info(f"\033[1;32m현재 회전: {deg:.2f} deg\033[0m")
+
+        if abs(deg) >= 90.0:  # 90도 도달
+            self.get_logger().info("\033[1;32m90도 회전 완료!\033[0m")
+            self.is_rotate_90 = True
 
     def enter_srv_callback(self, request, response):
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving enter")
@@ -300,7 +327,8 @@ class SelfDrivingNode(Node):
                     self.get_logger().info(f"\033[1;31mleft_lane_x: {left_lane_x}\nright_lane_x: {right_lane_x}\nmid_lane_x: {mid_lane_x}\033[0m")
                     if left_lane_x >= 0 and not self.stop:  
                         # if lane_x > 150:
-                        if turn_right:
+                        if turn_right and not self.is_rotate_90:
+                            self.check_90_rotate(self.count_turn)
                             self.count_turn += 1
                             if self.count_turn > 5 and not self.start_turn:
                                 self.start_turn = True
@@ -313,6 +341,7 @@ class SelfDrivingNode(Node):
                                 twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
                         else:  # use PID algorithm to correct turns on a straight road
                             self.count_turn = 0
+                            self.is_rotate_90 = False
                             if time.time() - self.start_turn_time_stamp > 2 and self.start_turn:
                                 self.start_turn = False
                             if not self.start_turn:
