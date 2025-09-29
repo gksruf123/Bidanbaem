@@ -332,6 +332,8 @@ class SelfDrivingNode(Node):
                         self.get_logger().info(f"\033[1;31mtwist.angular.z: {twist.angular.z}\033[0m")
                         # self.mecanum_pub.publish(twist)
                         self.mecanum_pub.publish(Twist())
+                    elif right_lane_x >= 0:
+                        twist.angular.z = -1.0
                     else:
                         self.pid.clear()
 
