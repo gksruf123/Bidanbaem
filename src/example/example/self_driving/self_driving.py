@@ -109,7 +109,7 @@ class SelfDrivingNode(Node):
         self.turn_right = False  # right turning sign
 
         self.count_start = 0
-        self.is_rotate_90 = False
+        self.is_rotate_90 = True
 
         self.last_park_detect = False
         self.count_park = 0  
@@ -327,7 +327,9 @@ class SelfDrivingNode(Node):
                     self.get_logger().info(f"\033[1;31mleft_lane_x: {left_lane_x}\nright_lane_x: {right_lane_x}\nmid_lane_x: {mid_lane_x}\033[0m")
                     if left_lane_x >= 0 and not self.stop:  
                         # if lane_x > 150:
-                        if turn_right and not self.is_rotate_90:
+                        if turn_right:
+                            self.is_rotate_90 = False
+                        if not self.is_rotate_90:
                             self.check_90_rotate(self.count_turn)
                             self.count_turn += 1
                             if self.count_turn > 5 and not self.start_turn:
@@ -341,7 +343,6 @@ class SelfDrivingNode(Node):
                                 twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
                         else:  # use PID algorithm to correct turns on a straight road
                             self.count_turn = 0
-                            self.is_rotate_90 = False
                             if time.time() - self.start_turn_time_stamp > 2 and self.start_turn:
                                 self.start_turn = False
                             if not self.start_turn:
