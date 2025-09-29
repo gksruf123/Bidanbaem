@@ -54,7 +54,7 @@ class SelfDrivingNode(Node):
         self.mecanum_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
         self.servo_state_pub = self.create_publisher(SetPWMServoState, 'ros_robot_controller/pwm_servo/set_state', 1)
         self.result_publisher = self.create_publisher(Image, '~/image_result', 1)
-        self.odom_subscriber = self.create_subscription(Odometry, 'odom_', self.odom_callback, 10)
+        self.odom_subscriber = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
 
         self.create_service(Trigger, '~/enter', self.enter_srv_callback) # enter the game
         self.create_service(Trigger, '~/exit', self.exit_srv_callback) # exit the game
@@ -141,7 +141,7 @@ class SelfDrivingNode(Node):
             if future.done() and future.result():
                 return future.result()
 
-    def quat_to_yaw(q):
+    def quat_to_yaw(self, q):
         # q: geometry_msgs/Quaternion
         # 표준 변환 (Z축 회전만 고려)
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
