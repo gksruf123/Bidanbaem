@@ -295,10 +295,10 @@ class SelfDrivingNode(Node):
                     #         self.count_park = 0  
 
                     # line following processing
-                    result_image, lane_angle, lane_x, turn_right = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
+                    result_image, lane_angle, left_lane_x, right_lane_x, mid_lane_x, turn_right = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
                     
-                    self.get_logger().info(f"\033[1;31mlane_x: {lane_x}\033[0m")
-                    if lane_x >= 0 and not self.stop:  
+                    self.get_logger().info(f"\033[1;31mleft_lane_x: {left_lane_x}\nright_lane_x: {right_lane_x}\nmid_lane_x: {mid_lane_x}\033[0m")
+                    if left_lane_x >= 0 and not self.stop:  
                         # if lane_x > 150:
                         if turn_right:
                             self.count_turn += 1
@@ -307,7 +307,7 @@ class SelfDrivingNode(Node):
                                 self.count_turn = 0
                                 self.start_turn_time_stamp = time.time()
                             if self.machine_type != 'MentorPi_Acker':
-                                twist.angular.z = -2.5 / 6.0 * float(turn_right)  # turning speed
+                                twist.angular.z = -2.5  # turning speed
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
                         else:  # use PID algorithm to correct turns on a straight road
@@ -315,8 +315,12 @@ class SelfDrivingNode(Node):
                             if time.time() - self.start_turn_time_stamp > 2 and self.start_turn:
                                 self.start_turn = False
                             if not self.start_turn:
-                                self.pid.SetPoint = 250  # the coordinate of the line while the robot is in the middle of the lane
-                                self.pid.update(lane_x)
+                                if mid_lane_x == -1:
+                                    self.pid.SetPoint = 320  # the coordinate of the line while the robot is in the middle of the lane
+                                    self.pid.update(mid_lane_x)
+                                else:
+                                    self.pid.SetPoint = 250  # the coordinate of the line while the robot is in the middle of the lane
+                                    self.pid.update(left_lane_x)
                                 if self.machine_type != 'MentorPi_Acker':
                                     twist.angular.z = common.set_range(self.pid.output, -0.15, 0.15)
                                 else:

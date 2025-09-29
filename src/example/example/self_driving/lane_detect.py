@@ -28,7 +28,15 @@ class LaneDetector(object):
         self.target_color = color
         # ROI for lane detection
         if os.environ['DEPTH_CAMERA_TYPE'] == 'ascamera':
-            self.rois = ((338, 360, 0, 320, 0.68), (292, 315, 0, 320, 0.2), (248, 270, 0, 320, 0.1), (200, 222, 0, 320, 0.01), (158, 180, 0, 320, 0.01))
+            self.rois = (
+                (338, 360, 0, 320, 0.7),
+                (292, 315, 0, 320, 0.2),
+                (248, 270, 0, 320, 0.1),
+                (338, 360, 320, 640, 0.7),
+                (292, 315, 320, 640, 0.2),
+                (248, 270, 320, 640, 0.1),
+                (0, 200, 0, 320, 0.0)
+            )
         else:
             self.rois = ((450, 480, 0, 320, 0.7), (390, 480, 0, 320, 0.2), (330, 480, 0, 320, 0.1))
         self.weight_sum = 1.0
@@ -140,9 +148,11 @@ class LaneDetector(object):
         # extract the center point based on the proportion
         centroid_sum = 0
         h, w = image.shape[:2]
-        max_center_x = -1
+        left_max_center_x = -1
+        right_min_center_x = -1
+        line_mid_center_x = -1
         center_x = []
-        turn_right = 0
+        turn_right = False
         for roi in self.rois:
             blob = image[roi[0]:roi[1], roi[2]:roi[3]]  # crop ROI
             contours = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]  # find contours
@@ -164,24 +174,26 @@ class LaneDetector(object):
                 center_x.append(line_center_x)
             else:
                 center_x.append(-1)
-        for i in range(len(center_x)):
+        for i in range(len(center_x) / 2):
             if center_x[i] != -1:
-                if center_x[i] > max_center_x:
-                    max_center_x = center_x[i]
+                if center_x[i] > left_max_center_x:
+                    left_max_center_x = center_x[i]
                 centroid_sum += center_x[i] * self.rois[i][-1]
+        for i in range(len(center_x) / 2, len(center_x)):
+            if center_x[i] != -1:
+                if center_x[i] > right_min_center_x:
+                    right_min_center_x = center_x[i]
+        if right_min_center_x != -1 and left_max_center_x != -1:
+            line_mid_center_x = (right_min_center_x + left_max_center_x) / 2
         if centroid_sum == 0:
-            return result_image, None, max_center_x, turn_right
+            return result_image, None, left_max_center_x, right_min_center_x, line_mid_center_x, turn_right
         center_pos = centroid_sum / self.weight_sum  # calculate the center point based on the proportion
         angle = math.degrees(-math.atan((center_pos - (w / 2.0)) / (h / 2.0)))
 
-        if center_x[-2] == -1:
-            turn_right = 6
-        elif center_x[-1] == -1:
-            turn_right = 1
-        else:
-            turn_right = 0
+        if center_x[-1] == -1:
+            turn_right = True
         
-        return result_image, angle, max_center_x, turn_right
+        return result_image, angle, left_max_center_x, right_min_center_x, line_mid_center_x, turn_right
 
 image_queue = queue.Queue(2)
 def image_callback(ros_image):
