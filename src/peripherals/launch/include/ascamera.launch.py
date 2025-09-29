@@ -19,10 +19,10 @@ def generate_launch_description():
                 {"color_pcl": True},
                 {"pub_tfTree": True},
                 {"depth_width": 640},
-                {"depth_height": 480},
+                {"depth_height": 480}, #360 doesn't seem to work
                 {"rgb_width": 640},
                 {"rgb_height": 480},
-                {"fps": 15},
+                {"fps": 20}, # does it actually work?
             ]
 
         ),
