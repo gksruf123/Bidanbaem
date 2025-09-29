@@ -307,6 +307,7 @@ class SelfDrivingNode(Node):
                                 self.count_turn = 0
                                 self.start_turn_time_stamp = time.time()
                             if self.machine_type != 'MentorPi_Acker':
+                                self.get_logger().info(f"\033[1;32mleft_lane_x: {left_lane_x}\nright_lane_x: {right_lane_x}\nmid_lane_x: {mid_lane_x}\033[0m")
                                 twist.angular.z = -2.5  # turning speed
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
@@ -333,11 +334,11 @@ class SelfDrivingNode(Node):
                         self.mecanum_pub.publish(twist)
                         # self.mecanum_pub.publish(Twist())
                     else:
-                        twist.angular.z = 1.0
+                        twist.angular.z = 0.6
                         self.get_logger().info(f"\033[1;31mtwist.linear.x: {twist.linear.x}\033[0m")
                         self.get_logger().info(f"\033[1;31mtwist.angular.z: {twist.angular.z}\033[0m")
                         self.mecanum_pub.publish(twist)
-                        self.pid.clear()
+                        # self.pid.clear()
 
                 
                     # if self.objects_info:
