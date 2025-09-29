@@ -329,8 +329,10 @@ class SelfDrivingNode(Node):
                         # if lane_x > 150:
                         if turn_right:
                             self.is_rotate_90 = False
+                            self.count_90_turn = 0
                         if not self.is_rotate_90:
-                            self.check_90_rotate(self.count_turn)
+                            self.check_90_rotate(self.count_90_turn)
+                            self.count_90_turn += 1
                             self.count_turn += 1
                             if self.count_turn > 5 and not self.start_turn:
                                 self.start_turn = True
