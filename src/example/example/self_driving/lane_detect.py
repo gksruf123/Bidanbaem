@@ -174,12 +174,12 @@ class LaneDetector(object):
                 center_x.append(line_center_x)
             else:
                 center_x.append(-1)
-        for i in range(len(center_x) / 2):
+        for i in range(3):
             if center_x[i] != -1:
                 if center_x[i] > left_max_center_x:
                     left_max_center_x = center_x[i]
                 centroid_sum += center_x[i] * self.rois[i][-1]
-        for i in range(len(center_x) / 2, len(center_x)):
+        for i in range(3, 6):
             if center_x[i] != -1:
                 if center_x[i] > right_min_center_x:
                     right_min_center_x = center_x[i]
