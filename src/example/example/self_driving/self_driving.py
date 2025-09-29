@@ -222,7 +222,7 @@ class SelfDrivingNode(Node):
                         # 첫 번째 횡단보도 → 무조건 정지
                         self.get_logger().info("첫 번째 횡단보도 정지 (규칙 적용)")
                         self.mecanum_pub.publish(Twist())
-                        time.sleep(3)  # 3초 대기
+                        time.sleep(1)  # 1초 대기
                         self.first_crosswalk_done = True
                         self.stop = False
                     else:
