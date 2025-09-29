@@ -64,9 +64,9 @@ class JoystickController(Node):
             axes['ry'] = 0
 
         if self.machine == 'MentorPi_Mecanum':
-            twist.linear.y = val_map(axes['lx'], -1, 1, -self.max_linear, self.max_linear) 
+            # twist.linear.y = val_map(axes['lx'], -1, 1, -self.max_linear, self.max_linear) 
             twist.linear.x = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            twist.angular.z = val_map(axes['rx'], -1, 1, -self.max_angular, self.max_angular)
+            twist.angular.z = val_map(axes['ry'], -1, 1, -self.max_angular, self.max_angular)
         elif self.machine == 'JetRover_Tank':
             twist.linear.x = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
             twist.angular.z = val_map(axes['rx'], -1, 1, -self.max_angular, self.max_angular)
