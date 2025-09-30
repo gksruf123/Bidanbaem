@@ -18,6 +18,44 @@ from rclpy.action import ActionClient
 import numpy as np
 import queue
 
+### Check camera transform ### 
+
+import tf2_ros
+import tf2_geometry_msgs
+from geometry_msgs.msg import PointStamped
+
+class PixelToOdom(Node):
+    def __init__(self):
+        super().__init__('pixel_to_odom')
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
+    def camera_to_odom(self, x, y, z):
+        # Put the 3D point in a PointStamped
+        ps = PointStamped()
+        ps.header.frame_id = "ascamera_color_0"   # camera frame
+        ps.header.stamp = self.get_clock().now().to_msg()
+        ps.point.x = x
+        ps.point.y = y
+        ps.point.z = z
+
+        try:
+            # Lookup transform from camera → odom
+            transform = self.tf_buffer.lookup_transform(
+                "odom",              # target frame
+                "ascamera_color_0",  # source frame
+                rclpy.time.Time()
+            )
+
+            # Apply the transform
+            ps_out = tf2_geometry_msgs.do_transform_point(ps, transform)
+            return ps_out.point
+        except Exception as e:
+            self.get_logger().error(f"Transform failed: {e}")
+            return None
+
+
+
 #MAP_X = 3000
 #MAP_Y = 2800
 #ROAD_W = 450
@@ -42,6 +80,18 @@ def yaw_from_quaternion_deg(q):
     yaw = math.atan2(siny_cosp, cosy_cosp)
     return math.degrees(yaw)
 
+def pixel_to_camera_xyz(u, v, dep):
+    dep /= 1000
+    fx = 576.5324096679688
+    fy = 576.1083374023438
+    cx = 332.5771484375
+    cy = 232.551513671875
+
+    X = (u - cx) * dep / fx
+    Y = (v - cy) * dep / fy
+    Z = dep
+
+    return (X,Y,Z)
 class Navigation(Node):
     def __init__(self, name='MS_Self_Drive'):
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
@@ -85,6 +135,8 @@ class Navigation(Node):
 
         self.wheel_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
         self.timer = self.create_timer(0.0, self.init_process) # run init_process asap
+
+        self.po_bridge = PixelToOdom()
         
         # threading.Thread(target=self.worker, daemon=True).start()  
 
@@ -269,7 +321,27 @@ class Navigation(Node):
                     cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (0, 255, 255))
         cv2.imshow('lab mask', out)
 
-        
+        if target_point:
+            _x, _y = target_point[0], target_point[1]
+            X,Y,Z = pixel_to_camera_xyz(_x, _y, image_dep[_y, _x])
+            print(X,Y,Z)
+            print('odom p:', self.po_bridge.camera_to_odom(X,Y,Z))
+
+
+        image_bgr = cv2.resize(image_bgr, (640, 480))
+        x = w//2
+        for _y in range(20, h - 20, 20):
+            depth = image_dep[_y, x]
+            if depth <= 245:
+                dist = 0
+            else:
+                dist = math.sqrt(depth**2 - 245**2)
+            cv2.putText(image_bgr, f'dep:{depth},dst:{dist:.1f}', (x, _y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+            cv2.putText(image_bgr, f'dep:{depth},dst:{dist:.1f}', (x, _y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            cv2.rectangle(image_bgr, (x, _y), (x, _y), (0, 0, 255), 3)
+
+        out = cv2.cvtColor(out, cv2.COLOR_BGR2RGB)
+        cv2.imshow('img', out)
 
         cv2.waitKey(1)
 
