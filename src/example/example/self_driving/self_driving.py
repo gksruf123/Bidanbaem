@@ -97,7 +97,7 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.3  # normal driving speed speed up
+        self.normal_speed = 0.6  # normal driving speed speed up
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -196,6 +196,17 @@ class SelfDrivingNode(Node):
         # put the image into the queue
         self.image_queue.put(rgb_image)
 
+    def compute_speed(self, yaw):   # ✅ 클래스 내부 메서드
+        yaw_abs = abs(yaw)
+        if yaw_abs < 0.02:        # 직선
+            return 0.6
+        elif yaw_abs < 0.05:      # 완만한 곡선
+            return 0.45
+        elif yaw_abs < 0.08:      # 보통 코너
+            return 0.35
+        else:                     # 급코너
+            return 0.22
+
     def main(self):
         while self.is_running:
             time_start = time.time()
@@ -242,11 +253,20 @@ class SelfDrivingNode(Node):
                 if lane_x >= 0 and not self.stop:  
                     self.pid.SetPoint = 130  # the coordinate of the line while the robot is in the middle of the lane
                     self.pid.update(lane_x)
-                    twist.linear.x = self.normal_speed
-                    twist.angular.z = common.set_range(self.pid.output, -0.1, 0.1)
+                    yaw= common.set_range(self.pid.output, -0.1, 0.1)
+                    twist.angular.z = yaw
+
+                    # yaw 크기에 따라 속도 자동 계산
+
+                    twist.linear.x = self.compute_speed(yaw)
+                    
                     self.mecanum_pub.publish(twist)  
                 else:
                     self.pid.clear()
+                    twist.linear.x = 0.0
+                    twist.angular.z = 0.0
+                    self.mecanum_pub.publish(twist)
+                    
 
                 # detection result visualization
                 if self.objects_info:
