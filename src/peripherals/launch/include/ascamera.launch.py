@@ -30,14 +30,14 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         #arguments = ['0', '0', '0', '-1.57', '0', '-1.57', 'depth_cam', 'ascamera_camera_link_0']
-        arguments = ['0', '0', '0', '-1.57', '0', '-1.57', 'depth_cam', 'ascamera_camera_link_0']
+        arguments = ['0', '0', '0.2', '-1.57', '-0.1745', '-1.57', 'depth_cam', 'ascamera_camera_link_0'] # raised the camera
         ),
         
         Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         #arguments = ['0', '0', '0', '-1.57', '0', '-1.57', 'depth_cam', 'ascamera_camera_link_0']
-        arguments = ['0', '0', '0', '-1.57', '0', '-1.57', 'depth_cam', 'ascamera_color_0']
+        arguments = ['0', '0', '0.2', '-1.57', '-0.1745', '-1.57', 'depth_cam', 'ascamera_color_0'] # raised the camera
         ),
         
       

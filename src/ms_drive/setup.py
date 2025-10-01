@@ -24,7 +24,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'nav=ms_drive.nav:main'
+            'nav=ms_drive.nav:main',
+            'odom_bridge=ms_drive.odom_tf_bridge:main',
+            'p2odom=ms_drive.p2odom:main'
         ],
     },
 )
