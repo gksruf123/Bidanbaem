@@ -56,3 +56,7 @@ qtcreator-*
 
 # Catkin custom files
 CATKIN_IGNORE
+
+.venv/
+requirments.txt
+rosbag/
