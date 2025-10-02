@@ -64,7 +64,7 @@ rosbag/
 .venv/
 
 # 로컬 설정파일
-lab_config.yaml
+#lab_config.yaml
 
 # 오타났을 수도 있는 requirements
 requirments.txt
