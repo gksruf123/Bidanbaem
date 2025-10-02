@@ -304,6 +304,7 @@ class SelfDrivingNode(Node):
                             self.stop = False
 
                     if self.wait:
+                        self.get_logger().info("\033[1;31mstate: **wait**\033[0m")
                         self.detected_cw = False
                         self.detected_go = False
                         self.detected_right = False
@@ -313,17 +314,21 @@ class SelfDrivingNode(Node):
                         continue
 
                     if self.start: # odom을 추가하여
+                        self.get_logger().info("\033[1;31mstate: **start**\033[0m")
                         twist.linear.x = self.slow_go_linear_x
-                        if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 600:
+                        if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
                             self.start_dist = self.cw_distance
+                            self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
                         else:
                             self.start_dist = self.fence_distance
+                            self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
 
                         if self.start_count == 0:
                             self.start_count += 1
                             self.basis_start_point_x, self.basis_start_point_y = self.position_x, self.position_y
 
-                        if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) > self.start_dist - 300:   # odom(m)과 distance(mm)의 단위를 고려하지 않음
+                        self.get_logger().info(f"\033[1;31modom: {max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 10000}, dist: {self.start_dist}\033[0m")
+                        if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 10000 > self.start_dist - 300:   # odom(m)과 distance(mm)의 단위를 고려하지 않음
                             self.go_finish = True
                             self.detected_cw = False
                             self.detected_go = False
@@ -345,7 +350,8 @@ class SelfDrivingNode(Node):
                                 twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
 
                     if self.turn:
-                        twist.linear.x = 0
+                        self.get_logger().info("\033[1;31mstate: **turn**\033[0m")
+                        twist.linear.x = 0.0
                         twist.angular.z = self.turn_angular_z
                         if self.turn_count == 0:
                             self.turn_count += 1
@@ -368,8 +374,8 @@ class SelfDrivingNode(Node):
                     self.detected_park = False
                     self.traffic_signs_status = None
 
-                    self.get_logger().info(f"\033[1;31mtwist.linear.x: {twist.linear.x}\033[0m")
-                    self.get_logger().info(f"\033[1;31mtwist.angular.z: {twist.angular.z}\033[0m")
+                    self.get_logger().info(f"\033[1;32mtwist.linear.x: {twist.linear.x}\033[0m")
+                    self.get_logger().info(f"\033[1;32mtwist.angular.z: {twist.angular.z}\033[0m")
                     self.mecanum_pub.publish(twist)
                     # self.mecanum_pub.publish(Twist())
 
@@ -450,6 +456,7 @@ class SelfDrivingNode(Node):
                     self.traffic_signs_status = 'green'
                     self.sign_distance = obj_distance
                     self.is_start = True
+                    # self.get_logger().info(f"\033[1;31m**detected {class_name}**\033[0m")
 
                 # if class_name == 'crosswalk':
                 #     self.get_logger().info(f"\033[1;31m{class_name}: {cw_distance}\033[0m")
