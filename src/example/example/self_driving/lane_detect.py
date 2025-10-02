@@ -127,45 +127,16 @@ class LaneDetector(object):
 
         return up_point, down_point, y_center
 
-    def auto_canny(self, gray, sigma=0.33):
-        v = np.median(gray)
-        lower = int(max(0, (1.0 - sigma) * v))
-        upper = int(min(255, (1.0 + sigma) * v))
-        return cv2.Canny(gray, lower, upper)
-
     def get_binary(self, image):
-        # --- 기존 이진화 ---
-        img_lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        mask = cv2.inRange(
-            img_lab,
-            tuple(lab_data['lab']['Stereo'][self.target_color]['min']),
-            tuple(lab_data['lab']['Stereo'][self.target_color]['max'])
-        )
+        # recognize color through LAB space
+        img_lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)  # convert RGB to LAB
+        img_blur = cv2.GaussianBlur(img_lab, (3, 3), 3)  # Gaussian blur denoising
+        mask = cv2.inRange(img_blur, tuple(lab_data['lab']['Stereo'][self.target_color]['min']), tuple(lab_data['lab']['Stereo'][self.target_color]['max']))  # 二值化
+        eroded = cv2.erode(mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # erode
+        dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # dilate
+
+        return dilated
         
-        # 모폴로지 연산 강화 (닫힘 연산으로 끊김 보완)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-
-        # --- Canny 개선 ---
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # 가우시안 블러 추가로 노이즈 제거
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = self.auto_canny(blurred, sigma=0.33)
-
-        # --- 결합 방식 개선 ---
-        combined = cv2.bitwise_or(mask, edges)  # OR 연산으로 연결성 강화
-
-        # 최종 연결성 보정
-        k_link = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        linked = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, k_link, iterations=3)
-        linked = cv2.dilate(linked, k_link, iterations=2)
-        linked = cv2.erode(linked, k_link, iterations=1)
-
-        return linked
-        
-
     def __call__(self, image, result_image):
         # extract the center point based on the proportion
         centroid_sum = 0

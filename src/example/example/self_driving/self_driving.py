@@ -29,73 +29,42 @@ from ros_robot_controller_msgs.msg import BuzzerState, SetPWMServoState, PWMServ
 
 class SelfDrivingNode(Node):
     def __init__(self, name):
-        print("3")
         rclpy.init()
-        print("4")
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
-        print("5")
         self.name = name
-        print("6")
         self.is_running = True
-        print("7")
         self.pid = pid.PID(0.4, 0.0, 0.05)
-        print("8")
         self.param_init()
-        print("9")
 
         self.fps = fps.FPS()  
-        print("10")
         self.image_queue = queue.Queue(maxsize=2)
-        print("11")
         self.classes = ['go', 'right', 'park', 'red', 'green', 'crosswalk']
-        print("12")
         self.display = True
-        print("13")
         self.bridge = CvBridge()
-        print("14")
         self.lock = threading.RLock()
-        print("15")
         self.colors = common.Colors()
-        print("16")
         # signal.signal(signal.SIGINT, self.shutdown)
         self.machine_type = os.environ.get('MACHINE_TYPE')
-        print("17")
         self.lane_detect = lane_detect.LaneDetector("yellow")
-        print("18")
 
         self.mecanum_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
-        print("19")
         self.servo_state_pub = self.create_publisher(SetPWMServoState, 'ros_robot_controller/pwm_servo/set_state', 1)
-        print("20")
         self.result_publisher = self.create_publisher(Image, '~/image_result', 1)
-        print("21")
 
         self.create_service(Trigger, '~/enter', self.enter_srv_callback) # enter the game
-        print("22")
         self.create_service(Trigger, '~/exit', self.exit_srv_callback) # exit the game
-        print("23")
         self.create_service(SetBool, '~/set_running', self.set_running_srv_callback)
-        print("24")
         # self.heart = Heart(self.name + '/heartbeat', 5, lambda _: self.exit_srv_callback(None))
         timer_cb_group = ReentrantCallbackGroup()
-        print("25")
         self.client = self.create_client(Trigger, '/yolov5_ros2/init_finish')
-        print("26")
         self.client.wait_for_service(timeout_sec=1)
-        print("27")
         self.start_yolov5_client = self.create_client(Trigger, '/yolov5/start', callback_group=timer_cb_group)
-        print("28")
         self.start_yolov5_client.wait_for_service(timeout_sec=1)
-        print("29")
         self.stop_yolov5_client = self.create_client(Trigger, '/yolov5/stop', callback_group=timer_cb_group)
-        print("30")
         self.stop_yolov5_client.wait_for_service(timeout_sec=1)
-        print("31")
         self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
-        print("32")
 
     def init_process(self):
-        print("??1")
         self.timer.cancel()
 
         self.mecanum_pub.publish(Twist())
@@ -116,7 +85,6 @@ class SelfDrivingNode(Node):
         self.get_logger().info('\033[1;32m%s\033[0m' % 'start')
 
     def param_init(self):
-        print("??2")
         self.start = False
         self.enter = False
         self.right = True
@@ -155,22 +123,16 @@ class SelfDrivingNode(Node):
         self.objects_info = []
 
     def get_node_state(self, request, response):
-        print("??3")
         response.success = True
         return response
 
     def send_request(self, client, msg):
-        print("??4")
         future = client.call_async(msg)
-        print("??41")
         while rclpy.ok():
-            print("??42")
             if future.done() and future.result():
-                print("??43")
                 return future.result()
 
     def enter_srv_callback(self, request, response):
-        print("??5")
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving enter")
         with self.lock:
             self.start = False
@@ -184,7 +146,6 @@ class SelfDrivingNode(Node):
         return response
 
     def exit_srv_callback(self, request, response):
-        print("??6")
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving exit")
         with self.lock:
             try:
@@ -201,7 +162,6 @@ class SelfDrivingNode(Node):
         return response
 
     def set_running_srv_callback(self, request, response):
-        print("??7")
         self.get_logger().info('\033[1;32m%s\033[0m' % "set_running")
         with self.lock:
             self.start = request.data
@@ -212,11 +172,9 @@ class SelfDrivingNode(Node):
         return response
 
     def shutdown(self, signum, frame):  # press 'ctrl+c' to close the program
-        print("??8")
         self.is_running = False
 
     def image_callback(self, ros_image):  # callback target checking
-        print("??9")
         cv_image = self.bridge.imgmsg_to_cv2(ros_image, "rgb8")
         rgb_image = np.array(cv_image, dtype=np.uint8)
         if self.image_queue.full():
@@ -269,44 +227,29 @@ class SelfDrivingNode(Node):
         self.mecanum_pub.publish(Twist())
 
     def main(self):
-        print("36")
         while self.is_running:
-            print("37")
             time_start = time.time()
-            print("38")
             try:
                 image = self.image_queue.get(block=True, timeout=1)
-                print("39")
             except queue.Empty:
-                print("40")
                 if not self.is_running:
-                    print("41")
                     break
                 else:
-                    print("42")
                     continue
 
             result_image = image.copy()
-            print("43")
             if self.start:
-                print("44")
                 h, w = image.shape[:2]
-                print("45")
 
                 # obtain the binary image of the lane
                 binary_image = self.lane_detect.get_binary(image)
-                print("46")
 
                 twist = Twist()
-                print("47")
 
                 # if detecting the zebra crossing, start to slow down
                 self.get_logger().info('\033[1;33m%s\033[0m' % self.crosswalk_distance)
-                print("48")
                 if 70 < self.crosswalk_distance and not self.start_slow_down:  # The robot starts to slow down only when it is close enough to the zebra crossing
-                    print("49")
                     self.count_crosswalk += 1
-                    print("50")
                     if self.count_crosswalk == 3:  # judge multiple times to prevent false detection
                         self.count_crosswalk = 0
                         self.start_slow_down = True  # sign for slowing down
@@ -441,18 +384,12 @@ class SelfDrivingNode(Node):
             self.crosswalk_distance = min_distance
 
 def main():
-    print("2")
     node = SelfDrivingNode('self_driving')
-    print("33")
     executor = MultiThreadedExecutor()
-    print("34")
     executor.add_node(node)
-    print("35")
     executor.spin()
-    print("100")
     node.destroy_node()
  
 if __name__ == "__main__":
     main()
-    print("1")
     
