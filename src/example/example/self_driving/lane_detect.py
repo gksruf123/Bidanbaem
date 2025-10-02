@@ -14,7 +14,14 @@ from cv_bridge import CvBridge
 
 bridge = CvBridge()
 
-lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
+username = os.getenv("USER")
+if username == "pi":
+    config_path = "/home/ubuntu/software/lab_tool/lab_config.yaml"
+else:
+    config_path = "/home/intel/Bidanbaem/lab_config.yaml"
+lab_data = common.get_yaml_data(config_path)
+
+#lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
 
 class LaneDetector(object):
     def __init__(self, color):
