@@ -167,23 +167,19 @@ class SelfDrivingNode(Node):
         self.green_stable_frames = 0
         self.GREEN_REQUIRED = 5
 
-        # 🔽 횡단보도 정차
+        # 🔽 횡단보도 정차 (쿨다운 포함)
         self.crosswalk_stop_pending = False
         self.crosswalk_stop_active = False
-        self.crosswalk_last_time = 0.0
-        self.crosswalk_stop_count = 0
-        self.CROSSWALK_STOP_SEC = 3.0
-        self.MAX_CROSSWALK_STOPS = 4
+        self.crosswalk_last_stop_time = 0.0   # 마지막 멈춘 시각
+        self.CROSSWALK_STOP_SEC = 3.0         # 정차 시간
+        self.CROSSWALK_IGNORE_SEC = 5.0       # 정차 후 무시 시간
 
-                # 주차 관련
+        # 주차 관련
         self.park_x = -1
         self.start_park = False      # 주차 시작 여부
         self.park_detected = False   # park 표지판을 봤는지
         self.park_detect_time = 0.0  # park 감지 시각
         self.PARK_DELAY = 2.0        # park 감지 후 몇 초 뒤에 주차 시작할지
-
-        
-    
 
 
     def get_node_state(self, request, response):
@@ -221,9 +217,9 @@ class SelfDrivingNode(Node):
         with self.lock:
             try:
                 if self.image_sub is not None:
-                    self.destroy_subscription(self.image_sub)   # ✅ 수정
+                    self.destroy_subscription(self.image_sub)
                 if self.object_sub is not None:
-                    self.destroy_subscription(self.object_sub) # ✅ 수정
+                    self.destroy_subscription(self.object_sub)
             except Exception as e:
                 self.get_logger().info(str(e))
             self.mecanum_pub.publish(Twist())
@@ -282,17 +278,21 @@ class SelfDrivingNode(Node):
                     self.mecanum_pub.publish(Twist())
                     continue
 
-                # 2) 횡단보도 정차
+                # 2) 횡단보도 정차 + 쿨다운
                 if self.crosswalk_stop_pending and not self.crosswalk_stop_active:
-                    self.crosswalk_stop_active = True
-                    self.crosswalk_stop_pending = False
-                    self.crosswalk_last_time = time.time()
-                    self.crosswalk_stop_count += 1
-                    self.mecanum_pub.publish(Twist())
-                    self.get_logger().info(f"[CROSSWALK] Stop #{self.crosswalk_stop_count}")
-
+                    now = time.time()
+                    if now - self.crosswalk_last_stop_time > self.CROSSWALK_IGNORE_SEC:
+                        self.crosswalk_stop_active = True
+                        self.crosswalk_stop_pending = False
+                        self.crosswalk_last_stop_time = now
+                        self.mecanum_pub.publish(Twist())
+                        self.get_logger().info("[CROSSWALK] Stop")
+                    else:
+                        self.crosswalk_stop_pending = False
+                        self.get_logger().info("[CROSSWALK] Ignored (cooldown)")
+                        
                 if self.crosswalk_stop_active:
-                    if time.time() - self.crosswalk_last_time < self.CROSSWALK_STOP_SEC:
+                    if time.time() - self.crosswalk_last_stop_time < self.CROSSWALK_STOP_SEC:
                         self.mecanum_pub.publish(Twist())
                         continue
                     else:
@@ -364,8 +364,6 @@ class SelfDrivingNode(Node):
         rclpy.shutdown()
 
 
-
-
     def get_object_callback(self, msg):
         self.objects_info = msg.objects
         if self.objects_info == []:
@@ -376,18 +374,22 @@ class SelfDrivingNode(Node):
             for i in self.objects_info:
                 class_name = i.class_name
                 center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
+
                 if class_name == 'crosswalk':
+                    self.crosswalk_stop_pending = True  # 감지 시 멈춤 후보
                     if center[1] > min_distance:
                         min_distance = center[1]
+
                 elif class_name == 'right':
                     self.count_right += 1
                     self.count_right_miss = 0
                     if self.count_right >= 5:
                         self.turn_right = True
                         self.count_right = 0
+
                 elif class_name == 'park':
                     self.park_x = center[0]
-                    if not self.park_detected:  # 처음 감지될 때만 기록
+                    if not self.park_detected:
                         self.park_detected = True
                         self.park_detect_time = time.time()
                         self.get_logger().info("[PARK] Park sign detected, preparing to park...")
