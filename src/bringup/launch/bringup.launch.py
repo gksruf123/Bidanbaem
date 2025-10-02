@@ -33,16 +33,16 @@ def launch_setup(context):
             os.path.join(peripherals_package_path, 'launch/lidar.launch.py')),
     )
 
-    rosbridge_websocket_launch = ExecuteProcess(
-            cmd=['ros2', 'launch', 'rosbridge_server', 'rosbridge_websocket_launch.xml'],
-            output='screen'
-        )
+    # rosbridge_websocket_launch = ExecuteProcess(
+    #         cmd=['ros2', 'launch', 'rosbridge_server', 'rosbridge_websocket_launch.xml'],
+    #         output='screen'
+    #     )
 
-    web_video_server_node = Node(
-        package='web_video_server',
-        executable='web_video_server',
-        output='screen',
-    )
+    # web_video_server_node = Node(
+    #     package='web_video_server',
+    #     executable='web_video_server',
+    #     output='screen',
+    # )
 
     start_app_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -67,17 +67,33 @@ def launch_setup(context):
         executable='startup_check',
         output='screen',
     )
+    # Add laser odometry node
+    laser_odometry_node = Node(
+        package='rf2o_laser_odometry',
+        executable='rf2o_laser_odometry_node',
+        name='rf2o_laser_odometry',
+        output='screen',
+        parameters=[{
+            'laser_scan_topic': '/scan_raw',  # Make sure this matches your LiDAR topic
+            'odom_topic': '/odom_rf2o',
+            'publish_tf': False,
+            'base_frame_id': 'base_footprint',
+            'odom_frame_id': 'odom',
+            'init_pose_from_topic': '',
+            'freq': 10.0}],
+    )
 
     return [
             startup_check_node,
             controller_launch,
             depth_camera_launch,
             lidar_launch,
-            rosbridge_websocket_launch,
-            web_video_server_node,
+            # rosbridge_websocket_launch,
+            # web_video_server_node,
             start_app_launch,
             joystick_control_launch,
             init_pose_launch,
+            laser_odometry_node,
             ]
 
 def generate_launch_description():
