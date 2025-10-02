@@ -58,3 +58,9 @@ qtcreator-*
 CATKIN_IGNORE
 
 rosbags/
+
+.venv/
+
+requirements.txt
+
+lab_config.yaml

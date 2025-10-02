@@ -14,7 +14,14 @@ from cv_bridge import CvBridge
 
 bridge = CvBridge()
 
-lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
+username = os.getenv("USER")
+if username == "pi":
+    config_path = "/home/ubuntu/software/lab_tool/lab_config.yaml"
+else:
+    config_path = "/home/intel/ros2_ws/lab_config.yaml"
+lab_data = common.get_yaml_data(config_path)
+
+# lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
 
 class LaneDetector(object):
     def __init__(self, color):
@@ -120,15 +127,44 @@ class LaneDetector(object):
 
         return up_point, down_point, y_center
 
-    def get_binary(self, image):
-        # recognize color through LAB space
-        img_lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)  # convert RGB to LAB
-        img_blur = cv2.GaussianBlur(img_lab, (3, 3), 3)  # Gaussian blur denoising
-        mask = cv2.inRange(img_blur, tuple(lab_data['lab']['Stereo'][self.target_color]['min']), tuple(lab_data['lab']['Stereo'][self.target_color]['max']))  # 二值化
-        eroded = cv2.erode(mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # erode
-        dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # dilate
+    def auto_canny(self, gray, sigma=0.33):
+        v = np.median(gray)
+        lower = int(max(0, (1.0 - sigma) * v))
+        upper = int(min(255, (1.0 + sigma) * v))
+        return cv2.Canny(gray, lower, upper)
 
-        return dilated
+    def get_binary(self, image):
+        # --- 기존 이진화 ---
+        img_lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        mask = cv2.inRange(
+            img_lab,
+            tuple(lab_data['lab']['Stereo'][self.target_color]['min']),
+            tuple(lab_data['lab']['Stereo'][self.target_color]['max'])
+        )
+        
+        # 모폴로지 연산 강화 (닫힘 연산으로 끊김 보완)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+
+        # --- Canny 개선 ---
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # 가우시안 블러 추가로 노이즈 제거
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = self.auto_canny(blurred, sigma=0.33)
+
+        # --- 결합 방식 개선 ---
+        combined = cv2.bitwise_or(mask, edges)  # OR 연산으로 연결성 강화
+
+        # 최종 연결성 보정
+        k_link = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        linked = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, k_link, iterations=3)
+        linked = cv2.dilate(linked, k_link, iterations=2)
+        linked = cv2.erode(linked, k_link, iterations=1)
+
+        return linked
+        
 
     def __call__(self, image, result_image):
         # extract the center point based on the proportion
@@ -194,12 +230,10 @@ def main():
         binary_image = lane_detect.get_binary(image)
         cv2.imshow('binary', binary_image)
         img = image.copy()
-        y = lane_detect.add_horizontal_line(binary_image)
-        roi = [(0, y), (640, y), (640, 0), (0, 0)]
-        cv2.fillPoly(binary_image, [np.array(roi)], [0, 0, 0])  # fill the top with black to avoid interference
-        min_x = cv2.minMaxLoc(binary_image)[-1][0]
-        cv2.line(img, (min_x, y), (640, y), (255, 255, 255), 50)  # draw a virtual line to guide the turning
-        result_image, angle, x = lane_detect(binary_image, image.copy()) 
+        # y = lane_detect.add_horizontal_line(binary_image)
+        # min_x = cv2.minMaxLoc(binary_image)[-1][0]
+        # cv2.line(img, (min_x, y), (640, y), (255, 255, 255), 50)  # draw a virtual line to guide the turning
+        # result_image, angle, x = lane_detect(binary_image, image.copy()) 
         '''
         up, down = lane_detect.add_vertical_line_far(binary_image)
         #up, down, center = lane_detect.add_vertical_line_near(binary_image)
