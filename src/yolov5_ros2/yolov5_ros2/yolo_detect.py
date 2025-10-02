@@ -125,6 +125,7 @@ class YoloV5Ros2(Node):
             center_y = (y1 + y2) / 2.0
 
             box_distance = depth[int(center_y), int(center_x)]
+            fence_distance = depth[10, 320]
 
             if ros_distribution == 'galactic':
                 detection2d.bbox.center.x = center_x
@@ -159,12 +160,13 @@ class YoloV5Ros2(Node):
             object_info.width = w
             object_info.height = h
             object_info.distance = int(box_distance)
+            object_info.fence_distance = int(fence_distance)
             objects_info.append(object_info)
 
         object_msg = ObjectsInfo()
         object_msg.objects = objects_info
         self.object_pub.publish(object_msg)
-        self.get_logger().info(f"\033[1;31m************************************\033[0m")
+        self.get_logger().info(f"\033[1;32m************************************\033[0m")
 
         # Display results if needed.
         if self.show_result:

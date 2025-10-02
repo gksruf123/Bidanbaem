@@ -4,3 +4,4 @@ float32 score
 int32 width
 int32 height
 int32 distance
+int32 fence_distance
