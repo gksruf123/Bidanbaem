@@ -13,14 +13,19 @@ import sdk.common as common
 from cv_bridge import CvBridge
 
 bridge = CvBridge()
-
+"""
 username = os.getenv("USER")
 if username == "pi":
     config_path = "/home/ubuntu/software/lab_tool/lab_config.yaml"
 else:
     config_path = "/home/intel/Bidanbaem/lab_config.yaml"
 lab_data = common.get_yaml_data(config_path)
+"""
+current_dir = os.path.dirname(os.path.abspath(__file__))       # 현재 파일 경로
+base_path = os.path.abspath(os.path.join(current_dir, "../../../../.."))  
+config_path = os.path.join(base_path, "lab_config.yaml")       # 최상위 Bidanbaem 경로에서 lab_config.yaml 찾기
 
+lab_data = common.get_yaml_data(config_path)
 #lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
 
 class LaneDetector(object):
