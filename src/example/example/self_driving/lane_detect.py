@@ -11,6 +11,7 @@ import threading
 import numpy as np
 import sdk.common as common
 from cv_bridge import CvBridge
+import numpy as np
 
 bridge = CvBridge()
 
@@ -129,52 +130,106 @@ class LaneDetector(object):
 
     def get_binary(self, image):
         # recognize color through LAB space
-        img_lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)  # convert RGB to LAB
-        img_blur = cv2.GaussianBlur(img_lab, (3, 3), 3)  # Gaussian blur denoising
+        resized = cv2.resize(image, (320, 240))
+        img_lab = cv2.cvtColor(resized, cv2.COLOR_BGR2LAB)  # convert RGB to LAB
+        img_blur = cv2.GaussianBlur(img_lab, (5, 5), 3)  # Gaussian blur denoising
         mask = cv2.inRange(img_blur, tuple(lab_data['lab']['Stereo'][self.target_color]['min']), tuple(lab_data['lab']['Stereo'][self.target_color]['max']))  # 二值化
         eroded = cv2.erode(mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # erode
-        dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # dilate
+        dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11)))  # dilate
+        try:
+            thinned = cv2.ximgproc.thinning(dilated, thinningType=cv2.ximgproc.THINNING_GUOHALL)
+        except Exception:
+            thinned = dilated
 
-        return dilated
+        return thinned
         
     def __call__(self, image, result_image):
-        # extract the center point based on the proportion
-        centroid_sum = 0
         h, w = image.shape[:2]
-        max_center_x = -1
-        center_x = []
-        for roi in self.rois:
-            blob = image[roi[0]:roi[1], roi[2]:roi[3]]  # crop ROI
-            contours = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]  # find contours
-            max_contour_area = self.get_area_max_contour(contours, 30)  # obtain the contour with the largest area
-            if max_contour_area is not None:
-                rect = cv2.minAreaRect(max_contour_area[0])  # the minimum bounding rectangle
-                box = np.intp(cv2.boxPoints(rect))  # four corners
-                for j in range(4):
-                    box[j, 1] = box[j, 1] + roi[0]
-                cv2.drawContours(result_image, [box], -1, (255, 255, 0), 2)  # draw the rectangle composed of the four points
 
-                # obtain the diagonal points of the rectangle
-                pt1_x, pt1_y = box[0, 0], box[0, 1]
-                pt3_x, pt3_y = box[2, 0], box[2, 1]
-                # the center point of the line
-                line_center_x, line_center_y = (pt1_x + pt3_x) / 2, (pt1_y + pt3_y) / 2
+        roi_left = (h//2, h, 0, w//2)
+        roi_right = (h//2, h, w//2, w)
 
-                cv2.circle(result_image, (int(line_center_x), int(line_center_y)), 5, (0, 0, 255), -1)  # draw the center point
-                center_x.append(line_center_x)
+        blob_left = image[roi_left[0]:roi_left[1], roi_left[2]:roi_left[3]]
+        blob_right = image[roi_right[0]:roi_right[1], roi_right[2]:roi_right[3]]
+
+        lines_left = cv2.HoughLinesP(blob_left, 1, np.pi / 180, threshold=30, minLineLength=30, maxLineGap=10)
+
+        lane_x, lane_angle = None, None
+
+        if lines_left is not None:
+            best = max(lines_left, key=lambda l: np.hypot(l[0][2]-l[0][0], l[0][3]-l[0][1]))
+            x1, y1, x2, y2 = best[0]
+
+            x1 += roi_left[2]; x2 += roi_left[2]
+            y1 += roi_left[0]; y2 += roi_left[0]
+
+            y_target = h // 2
+            dx = (x2 - x1); dy = (y2 - y1)
+
+            if abs(dy) < 1e-6:
+                lane_x = 0.5 * (x1 + x2)
             else:
-                center_x.append(-1)
-        for i in range(len(center_x)):
-            if center_x[i] != -1:
-                if center_x[i] > max_center_x:
-                    max_center_x = center_x[i]
-                centroid_sum += center_x[i] * self.rois[i][-1]
-        if centroid_sum == 0:
-            return result_image, None, max_center_x
-        center_pos = centroid_sum / self.weight_sum  # calculate the center point based on the proportion
-        angle = math.degrees(-math.atan((center_pos - (w / 2.0)) / (h / 2.0)))
+                slope = dy / (dx + 1e-6)
+                lane_x = x1 + (y_target - y1) / slope
+
+            lane_x = float(max(0, min(w - 1, lane_x)))    
+            lane_angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+
+        count_pix = cv2.countNonZero(blob_right)
+        threshold = int((h - h//2) * 0.35)
+        has_right = count_pix > threshold
+
+        if lane_x is not None:  # 3사분면에 차선이 있을 경우
+            orig_w = result_image.shape[1]
+            lane_x = lane_x * (orig_w / w)
+            if not has_right:   
+                # 4사분면에 차선이 없을 경우 = 횡단보도 앞
+                return result_image, "STOP_LINE", lane_angle, lane_x
+            else:
+                # 정상 주행 상황
+                return result_image, "GO_STRAIGHT", lane_angle, lane_x
+        else:
+            # 3사분면에 차선 없음 -> 서행
+            return result_image, None, None, None
+            
+        # extract the center point based on the proportion
+        # centroid_sum = 0
+        # h, w = image.shape[:2]
+        # max_center_x = -1
+        # center_x = []
+        # for roi in self.rois:
+        #     blob = image[roi[0]:roi[1], roi[2]:roi[3]]  # crop ROI
+        #     contours = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]  # find contours
+        #     max_contour_area = self.get_area_max_contour(contours, 30)  # obtain the contour with the largest area
+        #     if max_contour_area is not None:
+        #         rect = cv2.minAreaRect(max_contour_area[0])  # the minimum bounding rectangle
+        #         box = np.intp(cv2.boxPoints(rect))  # four corners
+        #         for j in range(4):
+        #             box[j, 1] = box[j, 1] + roi[0]
+        #         cv2.drawContours(result_image, [box], -1, (255, 255, 0), 2)  # draw the rectangle composed of the four points
+
+        #         # obtain the diagonal points of the rectangle
+        #         pt1_x, pt1_y = box[0, 0], box[0, 1]
+        #         pt3_x, pt3_y = box[2, 0], box[2, 1]
+        #         # the center point of the line
+        #         line_center_x, line_center_y = (pt1_x + pt3_x) / 2, (pt1_y + pt3_y) / 2
+
+        #         cv2.circle(result_image, (int(line_center_x), int(line_center_y)), 5, (0, 0, 255), -1)  # draw the center point
+        #         center_x.append(line_center_x)
+        #     else:
+        #         center_x.append(-1)
+        # for i in range(len(center_x)):
+        #     if center_x[i] != -1:
+        #         if center_x[i] > max_center_x:
+        #             max_center_x = center_x[i]
+        #         centroid_sum += center_x[i] * self.rois[i][-1]
+        # if centroid_sum == 0:
+        #     return result_image, None, max_center_x
+        # center_pos = centroid_sum / self.weight_sum  # calculate the center point based on the proportion
+        # angle = math.degrees(-math.atan((center_pos - (w / 2.0)) / (h / 2.0)))
         
-        return result_image, angle, max_center_x
+        # return result_image, angle, max_center_x
+
 
 image_queue = queue.Queue(2)
 def image_callback(ros_image):

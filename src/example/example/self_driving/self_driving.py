@@ -57,12 +57,14 @@ class SelfDrivingNode(Node):
         # self.heart = Heart(self.name + '/heartbeat', 5, lambda _: self.exit_srv_callback(None))
         timer_cb_group = ReentrantCallbackGroup()
         self.client = self.create_client(Trigger, '/yolov5_ros2/init_finish')
-        self.client.wait_for_service(timeout_sec=1)
+        self.client.wait_for_service()
         self.start_yolov5_client = self.create_client(Trigger, '/yolov5/start', callback_group=timer_cb_group)
-        self.start_yolov5_client.wait_for_service(timeout_sec=1)
+        self.start_yolov5_client.wait_for_service()
         self.stop_yolov5_client = self.create_client(Trigger, '/yolov5/stop', callback_group=timer_cb_group)
-        self.stop_yolov5_client.wait_for_service(timeout_sec=1)
+        self.stop_yolov5_client.wait_for_service()
+
         self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
+        
 
     def init_process(self):
         self.timer.cancel()
@@ -112,7 +114,7 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.1  # normal driving speed
+        self.normal_speed = 0.5  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -121,6 +123,9 @@ class SelfDrivingNode(Node):
         self.object_sub = None
         self.image_sub = None
         self.objects_info = []
+
+        self.last_stop_time = 0     # 횡단보도 마지막에 멈췄던 시간 체크용
+        self.stop_cooldown = 3.0    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
 
     def get_node_state(self, request, response):
         response.success = True
@@ -137,8 +142,8 @@ class SelfDrivingNode(Node):
         with self.lock:
             self.start = False
             camera = 'depth_cam'#self.get_parameter('depth_camera_name').value
-            self.create_subscription(Image, '/ascamera/camera_publisher/rgb0/image' , self.image_callback, 1)
-            self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.get_object_callback, 1)
+            self.image_sub = self.create_subscription(Image, '/ascamera/camera_publisher/rgb0/image' , self.image_callback, 1)
+            self.object_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.get_object_callback, 1)
             self.mecanum_pub.publish(Twist())
             self.enter = True
         response.success = True
@@ -149,10 +154,13 @@ class SelfDrivingNode(Node):
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving exit")
         with self.lock:
             try:
-                if self.image_sub is not None:
-                    self.image_sub.unregister()
-                if self.object_sub is not None:
-                    self.object_sub.unregister()
+                if self.image_sub:
+                    self.destroy_subscription(self.image_sub)
+                    self.image_sub = None
+
+                if self.object_sub:
+                    self.destroy_subscription(self.object_sub)
+                    self.object_sub = None
             except Exception as e:
                 self.get_logger().info('\033[1;32m%s\033[0m' % str(e))
             self.mecanum_pub.publish(Twist())
@@ -175,7 +183,7 @@ class SelfDrivingNode(Node):
         self.is_running = False
 
     def image_callback(self, ros_image):  # callback target checking
-        cv_image = self.bridge.imgmsg_to_cv2(ros_image, "rgb8")
+        cv_image = self.bridge.imgmsg_to_cv2(ros_image, "bgr8")
         rgb_image = np.array(cv_image, dtype=np.uint8)
         if self.image_queue.full():
             # if the queue is full, remove the oldest image
@@ -288,35 +296,70 @@ class SelfDrivingNode(Node):
                         self.count_park = 0  
 
                 # line following processing
-                result_image, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
-                if lane_x >= 0 and not self.stop:  
-                    if lane_x > 150:  
-                        self.count_turn += 1
-                        if self.count_turn > 5 and not self.start_turn:
-                            self.start_turn = True
-                            self.count_turn = 0
-                            self.start_turn_time_stamp = time.time()
-                        if self.machine_type != 'MentorPi_Acker':
-                            twist.angular.z = -0.45  # turning speed
-                        else:
-                            twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
-                    else:  # use PID algorithm to correct turns on a straight road
-                        self.count_turn = 0
-                        if time.time() - self.start_turn_time_stamp > 2 and self.start_turn:
-                            self.start_turn = False
-                        if not self.start_turn:
-                            self.pid.SetPoint = 130  # the coordinate of the line while the robot is in the middle of the lane
-                            self.pid.update(lane_x)
-                            if self.machine_type != 'MentorPi_Acker':
-                                twist.angular.z = common.set_range(self.pid.output, -0.1, 0.1)
-                            else:
-                                twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
-                        else:
-                            if self.machine_type == 'MentorPi_Acker':
-                                twist.angular.z = 0.15 * math.tan(-0.5061) / 0.145
-                    self.mecanum_pub.publish(twist)  
+                result_image, status, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
+                x_setpoint = int(w * 0.35) # 화면 중앙에서 살짝 왼쪽.
+                angle_setpoint = 60
+
+                if status == "GO_STRAIGHT":
+                    pos_error = lane_x - x_setpoint
+                    angle_error = lane_angle - angle_setpoint
+                    total_error = 0.7*pos_error + 0.3*angle_error
+
+                    self.pid.SetPoint = 0
+                    self.pid.update(total_error)
+                    twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
+                    self.get_logger().info(f"pos_error={pos_error:.2f}, angle_error={angle_error:.2f}, total={total_error:.2f}")
+                    self.mecanum_pub.publish(twist)
+
+                elif status == "STOP_LINE":
+                    now = time.time()
+                    if now - self.last_stop_time > self.stop_cooldown:
+                        twist.linear.x = 0.0
+                        twist.angular.z = 0.0
+                        self.last_stop_time = now
+                        twist.linear.x = self.normal_speed
+                        self.mecanum_pub.publish(twist)
+                        status = "GO_STRAIGHT"
+                    else:
+                        status = "GO_STRAIGHT"
+                
+                elif status is None:
+                    twist.linear.x = self.slow_down_speed
+                    twist.angular.z = 0.0
+                    self.mecanum_pub.publish(twist)
+                
                 else:
                     self.pid.clear()
+
+
+                # if lane_x >= 0 and not self.stop:  
+                #     if lane_x > 150:  
+                #         self.count_turn += 1
+                #         if self.count_turn > 5 and not self.start_turn:
+                #             self.start_turn = True
+                #             self.count_turn = 0
+                #             self.start_turn_time_stamp = time.time()
+                #         if self.machine_type != 'MentorPi_Acker':
+                #             twist.angular.z = -0.45  # turning speed
+                #         else:
+                #             twist.angular.z = twist.linear.x * math.tan(-0.5061) / 0.145
+                #     else:  # use PID algorithm to correct turns on a straight road
+                #         self.count_turn = 0
+                #         if time.time() - self.start_turn_time_stamp > 2 and self.start_turn:
+                #             self.start_turn = False
+                #         if not self.start_turn:
+                #             self.pid.SetPoint = 130  # the coordinate of the line while the robot is in the middle of the lane
+                #             self.pid.update(lane_x)
+                #             if self.machine_type != 'MentorPi_Acker':
+                #                 twist.angular.z = common.set_range(self.pid.output, -0.1, 0.1)
+                #             else:
+                #                 twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
+                #         else:
+                #             if self.machine_type == 'MentorPi_Acker':
+                #                 twist.angular.z = 0.15 * math.tan(-0.5061) / 0.145
+                #     self.mecanum_pub.publish(twist)  
+                # else:
+                #     self.pid.clear()
 
              
                 if self.objects_info:
@@ -346,7 +389,8 @@ class SelfDrivingNode(Node):
             self.result_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
 
            
-            time_d = 0.03 - (time.time() - time_start)
+            target_period = 1.0 / 20.0   # 20fps → 0.05초
+            time_d = target_period - (time.time() - time_start)
             if time_d > 0:
                 time.sleep(time_d)
         self.mecanum_pub.publish(Twist())
@@ -392,4 +436,5 @@ def main():
  
 if __name__ == "__main__":
     main()
+
     
