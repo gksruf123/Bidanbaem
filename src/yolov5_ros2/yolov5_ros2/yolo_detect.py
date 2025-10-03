@@ -1,5 +1,6 @@
 from math import frexp
 from traceback import print_tb
+import numpy as np
 import torch
 from yolov5 import YOLOv5
 import rclpy
@@ -99,6 +100,15 @@ class YoloV5Ros2(Node):
         # 5. Detect and publish results.
         image = self.bridge.imgmsg_to_cv2(rgb_msg, "rgb8")
         depth = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')
+
+        # 깊이 값 보정 (0 → 주변값으로 보간)
+        depth_uint16 = depth.astype(np.uint16)  # inpaint는 8/16bit만 지원
+        mask = (depth_uint16 == 0).astype('uint8')    # 0인 부분을 마스크로 지정
+        depth_inpaint = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
+
+        # 다시 float로 변환 (필요하다면)
+        depth = depth_inpaint.astype(np.float32)
+
         detect_result = self.yolov5.predict(image)
 
         self.result_msg.detections.clear()
