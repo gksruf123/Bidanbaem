@@ -119,7 +119,7 @@ class SelfDrivingNode(Node):
 
         self.go_linear_x = 1.0
         self.slow_go_linear_x = 0.5
-        self.turn_angular_z = 1.0
+        self.turn_angular_z = -1.0
         self.park_linear_y = -0.5
 
         self.turn_finish = True
@@ -305,36 +305,39 @@ class SelfDrivingNode(Node):
 
                     if self.wait:
                         self.get_logger().info("\033[1;31mstate: **wait**\033[0m")
-                        self.detected_cw = False
-                        self.detected_go = False
-                        self.detected_right = False
-                        self.detected_park = False
-                        self.traffic_signs_status = None
+                        # self.detected_cw = False
+                        # self.detected_go = False
+                        # self.detected_right = False
+                        # self.detected_park = False
+                        # self.traffic_signs_status = None
                         self.mecanum_pub.publish(Twist())
                         continue
 
                     if self.start: # odom을 추가하여
                         self.get_logger().info("\033[1;31mstate: **start**\033[0m")
                         twist.linear.x = self.slow_go_linear_x
-                        if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
-                            self.start_dist = self.cw_distance
-                            self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
-                        else:
-                            self.start_dist = self.fence_distance
-                            self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
-
+                        self.get_logger().info(f"\033[1;31m1. self.detected_cw: {self.detected_cw}\033[0m")
+                        self.get_logger().info(f"\033[1;31m2. detect sign: {self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True}\033[0m")
+                        self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance > 400}\033[0m")
                         if self.start_count == 0:
+                            if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
+                                self.start_dist = self.cw_distance
+                                self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
+                            else:
+                                self.start_dist = self.fence_distance
+                                self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
+
                             self.start_count += 1
                             self.basis_start_point_x, self.basis_start_point_y = self.position_x, self.position_y
 
-                        self.get_logger().info(f"\033[1;31modom: {max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 10000}, dist: {self.start_dist}\033[0m")
-                        if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 10000 > self.start_dist - 300:   # odom(m)과 distance(mm)의 단위를 고려하지 않음
+                        self.get_logger().info(f"\033[1;31modom: {max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000}, dist: {self.start_dist}\033[0m")
+                        if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000 > self.start_dist - 100:   # odom(m)과 distance(mm)의 단위를 고려하지 않음
                             self.go_finish = True
-                            self.detected_cw = False
-                            self.detected_go = False
-                            self.detected_right = False
-                            self.detected_park = False
-                            self.traffic_signs_status = None
+                            # self.detected_cw = False
+                            # self.detected_go = False
+                            # self.detected_right = False
+                            # self.detected_park = False
+                            # self.traffic_signs_status = None
                             self.mecanum_pub.publish(Twist())
                             continue
                         if left_lane_x >= 0 and not self.stop:
@@ -359,20 +362,20 @@ class SelfDrivingNode(Node):
 
                         if abs(self.basis_turn_point - self.degree) > 85:
                             self.turn_finish = True
-                            self.detected_cw = False
-                            self.detected_go = False
-                            self.detected_right = False
-                            self.detected_park = False
-                            self.traffic_signs_status = None
+                            # self.detected_cw = False
+                            # self.detected_go = False
+                            # self.detected_right = False
+                            # self.detected_park = False
+                            # self.traffic_signs_status = None
                             self.mecanum_pub.publish(Twist())
                             continue
 
 
-                    self.detected_cw = False
-                    self.detected_go = False
-                    self.detected_right = False
-                    self.detected_park = False
-                    self.traffic_signs_status = None
+                    # self.detected_cw = False
+                    # self.detected_go = False
+                    # self.detected_right = False
+                    # self.detected_park = False
+                    # self.traffic_signs_status = None
 
                     self.get_logger().info(f"\033[1;32mtwist.linear.x: {twist.linear.x}\033[0m")
                     self.get_logger().info(f"\033[1;32mtwist.angular.z: {twist.angular.z}\033[0m")
@@ -423,13 +426,14 @@ class SelfDrivingNode(Node):
             self.traffic_signs_status = None
             self.cw_distance = -1
             self.right_distance = -1
+            self.sign_distance = -1
 
             self.detected_cw = False
             self.detected_go = False
             self.detected_right = False
             self.detected_park = False
         else:
-            self.cw_distance = 0
+            self.cw_distance = 10000
             for i in self.objects_info:
                 class_name = i.class_name
                 center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
