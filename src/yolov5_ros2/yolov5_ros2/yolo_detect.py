@@ -4,6 +4,7 @@ from traceback import print_tb
 # import torch
 # from yolov5 import YOLOv5
 
+import message_filters
 import rclpy
 import yolov5_ros2.fps as fps
 from rclpy.node import Node
@@ -212,8 +213,12 @@ class YoloV5Ros2(Node):
         self.result_img_pub = self.create_publisher(Image, "result_img", 10)
 
         # Subscriber
-        image_topic = self.get_parameter('image_topic').value
-        self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
+        # image_topic = self.get_parameter('image_topic').value
+        # self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
+        rgb_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image')
+        depth_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw')
+        ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=10, slop=0.05)
+        ts.registerCallback(self.image_callback)
 
         # Bridge & flags
         self.bridge = CvBridge()
@@ -239,12 +244,21 @@ class YoloV5Ros2(Node):
         response.message = "stop"
         return response
 
-    def image_callback(self, msg: Image):
+    def image_callback(self, rgb_msg, depth_msg):
         if not self.start:
             return
 
-        image = self.bridge.imgmsg_to_cv2(msg, "rgb8")
+        image = self.bridge.imgmsg_to_cv2(rgb_msg, "rgb8")
+        depth = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')
         detect_result = self.yolov5.predict(image)  # 동일 시그니처 유지
+
+        # 깊이 값 보정 (0 → 주변값으로 보간)
+        depth_uint16 = depth.astype(np.uint16)  # inpaint는 8/16bit만 지원
+        mask = (depth_uint16 == 0).astype('uint8')    # 0인 부분을 마스크로 지정
+        depth_inpaint = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
+
+        # 다시 float로 변환 (필요하다면)
+        depth = depth_inpaint.astype(np.float32)
 
         self.result_msg.detections.clear()
         self.result_msg.header.frame_id = "camera"
@@ -268,6 +282,9 @@ class YoloV5Ros2(Node):
             x1, y1, x2, y2 = boxes[index]
             x1 = int(x1); y1 = int(y1); x2 = int(x2); y2 = int(y2)
             cx = (x1 + x2) / 2.0; cy = (y1 + y2) / 2.0
+
+            box_distance = depth[int(cy), int(cx)]
+            fence_distance = depth[10, 320]
 
             if ros_distribution == 'galactic':
                 det.bbox.center.x = cx; det.bbox.center.y = cy
@@ -294,6 +311,8 @@ class YoloV5Ros2(Node):
             oi.box = [x1, y1, x2, y2]
             oi.score = round(float(scores[index]), 2)
             oi.width = w; oi.height = h
+            oi.distance = int(box_distance)
+            oi.fence_distance = int(fence_distance)
             objects_info.append(oi)
 
         object_msg = ObjectsInfo()
