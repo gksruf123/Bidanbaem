@@ -1,3 +1,4 @@
+import json
 from math import frexp
 from traceback import print_tb
 import numpy as np
@@ -53,9 +54,15 @@ class YoloV5Ros2(Node):
         self.create_service(Trigger, '~/init_finish', self.get_node_state)
 
         # Load the model.
-        model_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".pt"
+        model_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".onnx"
+        label_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".names.json"
         device = self.get_parameter('device').value
         self.yolov5 = YOLOv5(model_path=model_path, device=device)
+        with open(label_path, "r") as f:
+            self.label_dict = json.load(f)
+        # model_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".pt"
+        # device = self.get_parameter('device').value
+        # self.yolov5 = YOLOv5(model_path=model_path, device=device)
 
         # Create publishers.
         self.yolo_result_pub = self.create_publisher(Detection2DArray, "yolo_result", 10)
@@ -116,14 +123,16 @@ class YoloV5Ros2(Node):
         self.result_msg.header.stamp = self.get_clock().now().to_msg()
 
         # Parse the results.
-        predictions = detect_result.pred[0]
+        # predictions = detect_result.pred[0]
+        predictions = detect_result[0]
         boxes = predictions[:, :4]  # x1, y1, x2, y2
         scores = predictions[:, 4]
         categories = predictions[:, 5]
 
         objects_info = []
         for index in range(len(categories)):
-            name = detect_result.names[int(categories[index])]
+            # name = detect_result.names[int(categories[index])]
+            name = self.label_dict[str(categories[index])]
             detection2d = Detection2D()
             detection2d.id = name
             x1, y1, x2, y2 = boxes[index]
