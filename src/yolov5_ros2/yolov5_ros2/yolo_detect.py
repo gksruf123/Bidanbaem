@@ -84,8 +84,18 @@ class YoloV5ONNXNode(Node):
         result_msg.header.stamp = self.get_clock().now().to_msg()
         objects_info = []
 
+        orig_h, orig_w = image.shape[:2]
+        pred_h, pred_w = 640, 640  # 모델 입력 크기
+
         for pred in preds:
             x1, y1, x2, y2 = map(int, pred[:4])
+
+            # pred[:4] 는 x1, y1, x2, y2
+            x1, y1, x2, y2 = pred[:4]
+            x1 = int(x1 * orig_w / pred_w)
+            x2 = int(x2 * orig_w / pred_w)
+            y1 = int(y1 * orig_h / pred_h)
+            y2 = int(y2 * orig_h / pred_h)
             object_conf = float(pred[4])
             class_probs = pred[5:]
             cls_idx = int(np.argmax(class_probs))
