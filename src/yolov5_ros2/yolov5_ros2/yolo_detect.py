@@ -261,6 +261,7 @@ class YoloV5Ros2(Node):
         for index in range(len(categories)):
             cid = int(categories[index])
             name = detect_result.names[cid] if cid < len(detect_result.names) else f"cls_{cid}"
+            self.get_logger().info(f"\033[1;31m**{name}**\033[0m")
 
             det = Detection2D()
             det.id = name
@@ -284,7 +285,7 @@ class YoloV5Ros2(Node):
 
             if self.show_result or self.pub_result_img:
                 cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(image, f"{name}:{hyp.hypothesis.score:.2f}", (x1, y1),
+                cv2.putText(image, f"{name}:{hyp.hypothesis.score:.2f}", (x1, y1 - 20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 cv2.waitKey(1)
 
