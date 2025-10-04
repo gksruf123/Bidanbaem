@@ -33,7 +33,7 @@ class SelfDrivingNode(Node):
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
         self.name = name
         self.is_running = True
-        self.pid = pid.PID(0.4, 0.0, 0.05)
+        self.pid = pid.PID(0.6, 0.0, 0.05) # 0.4 -> 0.6
         self.param_init()
 
         self.fps = fps.FPS()  
@@ -113,8 +113,8 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.1  # normal driving speed
-        self.slow_down_speed = 0.1  # slowing down speed
+        self.normal_speed = 0.5  # normal driving speed
+        self.slow_down_speed = 0.3  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
         self.red_loss_count = 0
