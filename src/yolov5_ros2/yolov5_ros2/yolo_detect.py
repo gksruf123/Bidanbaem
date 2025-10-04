@@ -333,6 +333,7 @@ class YoloV5Ros2(Node):
         if len(categories) > 0:
             self.yolo_result_pub.publish(self.result_msg)
 
+        self.get_logger().info(f"\033[1;32m********************************\033[0m")
 def main():
     rclpy.init()
     rclpy.spin(YoloV5Ros2())

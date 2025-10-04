@@ -135,6 +135,36 @@ class SelfDrivingNode(Node):
     def call_start(self):
         req = Trigger.Request()
         future = self.start_yolov5_client.call_async(req)
+        future.add_done_callback(self._on_start_response)
+    
+    def _on_start_response(self, future):
+        try:
+            result = future.result()
+            if result:
+                self.get_logger().info(f"[START] 응답: {result.message}")
+            else:
+                self.get_logger().warn("[START] 응답이 None입니다.")
+        except Exception as e:
+            self.get_logger().error(f"[START] 서비스 호출 실패: {e}")
+
+    def call_stop(self):
+        req = Trigger.Request()
+        future = self.stop_yolov5_client.call_async(req)
+        future.add_done_callback(self._on_stop_response)
+
+    def _on_stop_response(self, future):
+        try:
+            result = future.result()
+            if result:
+                self.get_logger().info(f"[STOP] 응답: {result.message}")
+            else:
+                self.get_logger().warn("[STOP] 응답이 None입니다.")
+        except Exception as e:
+            self.get_logger().error(f"[STOP] 서비스 호출 실패: {e}")
+    '''
+    def call_start(self):
+        req = Trigger.Request()
+        future = self.start_yolov5_client.call_async(req)
         rclpy.spin_until_future_complete(self, future)
         if future.result() is not None:
             self.get_logger().info(f"Start response: {future.result().message}")
@@ -149,7 +179,7 @@ class SelfDrivingNode(Node):
             self.get_logger().info(f"Stop response: {future.result().message}")
         else:
             self.get_logger().error("Failed to call /yolov5/stop")
-
+    '''
     def get_node_state(self, request, response):
         response.success = True
         return response
@@ -294,7 +324,7 @@ class SelfDrivingNode(Node):
 
                     if self.go_finish and self.turn_finish:
                         if self.wait:
-                            if time.time() - self.stop_time > 1.0:
+                            if time.time() - self.stop_time > 5.0:
                                 if self.traffic_signs_status != 'red':
                                     self.wait = False
                                     self.start = True
@@ -313,6 +343,7 @@ class SelfDrivingNode(Node):
                             # 조금 갔다가 우회전 하는 것 구현
                             # elif (self.right_distance != -1 and self.right_distance < 300):
                             else:
+                                self.stop_time = time.time()
                                 self.wait = True
                                 self.call_start()
                                 self.start = False
@@ -337,10 +368,10 @@ class SelfDrivingNode(Node):
                     if self.start: # odom을 추가하여
                         self.get_logger().info("\033[1;31mstate: **start**\033[0m")
                         twist.linear.x = self.slow_go_linear_x
-                        self.get_logger().info(f"\033[1;31m1. self.detected_cw: {self.detected_cw}\033[0m")
-                        self.get_logger().info(f"\033[1;31m2. detect sign: {self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True}\033[0m")
-                        self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance > 400}\033[0m")
                         if self.start_count == 0:
+                            self.get_logger().info(f"\033[1;31m1. self.detected_cw: {self.detected_cw}\033[0m")
+                            self.get_logger().info(f"\033[1;31m2. detect sign: {self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True}\033[0m")
+                            self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance > 400}\033[0m")
                             if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
                                 self.start_dist = self.cw_distance
                                 self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
@@ -353,6 +384,7 @@ class SelfDrivingNode(Node):
 
                         self.get_logger().info(f"\033[1;31modom: {max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000}, dist: {self.start_dist}\033[0m")
                         if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000 > self.start_dist - 100:   # odom(m)과 distance(mm)의 단위를 고려하지 않음
+                            self.get_logger().info(f"\033[1;31m**go finish**\033[0m")
                             self.go_finish = True
                             # self.detected_cw = False
                             # self.detected_go = False
@@ -362,13 +394,15 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(Twist())
                             continue
                         if left_lane_x >= 0 and not self.stop:
+                            self.get_logger().info(f"\033[1;31m**left_lane_x: {left_lane_x}**\033[0m")
                             if mid_lane_x == -1:
                                 self.pid.SetPoint = 180  # the coordinate of the line while the robot is in the middle of the lane
                                 self.pid.update(left_lane_x)
                             else:
-                                self.pid.SetPoint = 240  # the coordinate of the line while the robot is in the middle of the lane
+                                self.pid.SetPoint = 230  # the coordinate of the line while the robot is in the middle of the lane
                                 self.pid.update(mid_lane_x)
                             if self.machine_type != 'MentorPi_Acker':
+                                self.get_logger().info(f"\033[1;31m**Adjust Line**\033[0m")
                                 twist.angular.z = common.set_range(self.pid.output, -0.15, 0.15)
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
