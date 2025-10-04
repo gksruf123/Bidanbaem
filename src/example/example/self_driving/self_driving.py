@@ -132,6 +132,24 @@ class SelfDrivingNode(Node):
 
         self.start_turn_time_stamp = 0
 
+    def call_start(self):
+        req = Trigger.Request()
+        future = self.start_yolov5_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        if future.result() is not None:
+            self.get_logger().info(f"Start response: {future.result().message}")
+        else:
+            self.get_logger().error("Failed to call /yolov5/start")
+
+    def call_stop(self):
+        req = Trigger.Request()
+        future = self.stop_yolov5_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        if future.result() is not None:
+            self.get_logger().info(f"Stop response: {future.result().message}")
+        else:
+            self.get_logger().error("Failed to call /yolov5/stop")
+
     def get_node_state(self, request, response):
         response.success = True
         return response
@@ -280,6 +298,7 @@ class SelfDrivingNode(Node):
                                 if self.traffic_signs_status != 'red':
                                     self.wait = False
                                     self.start = True
+                                    self.call_stop()
                                     self.go_finish = False
                         elif self.start:
                             self.start_count = 0
@@ -295,10 +314,12 @@ class SelfDrivingNode(Node):
                             # elif (self.right_distance != -1 and self.right_distance < 300):
                             else:
                                 self.wait = True
+                                self.call_start()
                                 self.start = False
                         elif self.turn:
                             self.turn_count = 0
-                            self.start = True
+                            self.wait = True
+                            self.call_start()
                             self.turn = False
                         elif self.stop:
                             self.stop = False
