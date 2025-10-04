@@ -523,12 +523,21 @@ class SelfDrivingNode_FullCourse(SelfDrivingNode):
         rclpy.shutdown()
 
 
-def main_full():
+def main():
+    rclpy.init()
     node = SelfDrivingNode_FullCourse('self_driving_fullcourse')
     executor = MultiThreadedExecutor()
     executor.add_node(node)
-    executor.spin()
-    node.destroy_node()
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == "__main__":
+    main()
 
 """
 def main():
