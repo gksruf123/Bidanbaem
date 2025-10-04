@@ -276,7 +276,7 @@ class SelfDrivingNode(Node):
 
                     if self.go_finish and self.turn_finish:
                         if self.wait:
-                            if time.time() - self.stop_time > 0.5:
+                            if time.time() - self.stop_time > 1.0:
                                 if self.traffic_signs_status != 'red':
                                     self.wait = False
                                     self.start = True

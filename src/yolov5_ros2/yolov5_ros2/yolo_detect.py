@@ -302,8 +302,8 @@ class YoloV5Ros2(Node):
 
             if self.show_result or self.pub_result_img:
                 cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(image, f"{name}:{hyp.hypothesis.score:.2f}", (x1, y1 - 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                cv2.putText(image, f"{name}:{hyp.hypothesis.score:.2f}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                cv2.putText(image, f"{box_distance} | {fence_distance}", (x1, y1 + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
                 cv2.waitKey(1)
 
             oi = ObjectInfo()
