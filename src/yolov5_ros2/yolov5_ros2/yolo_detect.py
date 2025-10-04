@@ -116,7 +116,16 @@ class YoloV5Ros2(Node):
         # 다시 float로 변환 (필요하다면)
         depth = depth_inpaint.astype(np.float32)
 
-        detect_result = self.yolov5.predict(image)
+        image_resized = cv2.resize(image, (640, 640))
+        detect_result = self.yolov5.predict(image_resized)
+        # detect_result = self.yolov5.predict(image)
+
+        h_orig, w_orig = image.shape[:2]        # 원본 크기 (예: 480x640)
+        h_resized, w_resized = 640, 640         # YOLO 입력 크기
+
+        scale_x = w_orig / w_resized
+        scale_y = h_orig / h_resized
+
 
         self.result_msg.detections.clear()
         self.result_msg.header.frame_id = "camera"
@@ -136,10 +145,14 @@ class YoloV5Ros2(Node):
             detection2d = Detection2D()
             detection2d.id = name
             x1, y1, x2, y2 = boxes[index]
-            x1 = int(x1)
-            y1 = int(y1)
-            x2 = int(x2)
-            y2 = int(y2)
+            # x1 = int(x1)
+            # y1 = int(y1)
+            # x2 = int(x2)
+            # y2 = int(y2)
+            x1 = int(x1 * scale_x)
+            x2 = int(x2 * scale_x)
+            y1 = int(y1 * scale_y)
+            y2 = int(y2 * scale_y)
             center_x = (x1 + x2) / 2.0
             center_y = (y1 + y2) / 2.0
 
