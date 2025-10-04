@@ -47,7 +47,10 @@ def launch_setup(context):
             "camera_info_topic": "/camera/camera_info",
             "camera_info_file": f"{package_share_directory}/config/camera_info.yaml",
             # "show_result": True,
-            "pub_result_img": True}]
+            "pub_result_img": True,
+            "conf_thres": 0.30,
+            "iou_thres": 0.45,
+            "img_size": 640}]
     )
 
     self_driving_node = Node(
