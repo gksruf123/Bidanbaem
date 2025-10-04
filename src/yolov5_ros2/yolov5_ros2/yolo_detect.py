@@ -327,7 +327,7 @@ class YoloV5Ros2(Node):
 
         if self.pub_result_img:
             result_img_msg = self.bridge.cv2_to_imgmsg(image, encoding="rgb8")
-            result_img_msg.header = msg.header
+            result_img_msg.header = rgb_msg.header
             self.result_img_pub.publish(result_img_msg)
 
         if len(categories) > 0:
