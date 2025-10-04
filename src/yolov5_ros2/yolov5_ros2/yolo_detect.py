@@ -90,7 +90,7 @@ class YoloV5ONNXNode(Node):
             class_probs = pred[5:]
             cls_idx = int(np.argmax(class_probs))
             score = object_conf * float(class_probs[cls_idx])
-            name = self.class_names[cls_idx]
+            name = self.class_names[str(cls_idx)]
 
             # ROS Detection2D
             det2d = Detection2D()
