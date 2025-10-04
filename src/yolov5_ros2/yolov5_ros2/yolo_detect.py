@@ -58,7 +58,7 @@ class YoloV5Ros2(Node):
         label_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".names.json"
         device = self.get_parameter('device').value
         # self.yolov5 = YOLOv5(model_path=model_path, device=device)
-        self.yolov5 = torch.hub.load('/home/ubuntu/Study/yolov5', 'custom', path=model_path, source='local')
+        self.yolov5 = torch.hub.load('/shared/Bidanbaem/yolov5', 'custom', path=model_path, source='local')
         with open(label_path, "r") as f:
             self.label_dict = json.load(f)
         # model_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".pt"
