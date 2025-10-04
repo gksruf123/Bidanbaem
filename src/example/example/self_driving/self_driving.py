@@ -29,7 +29,6 @@ from ros_robot_controller_msgs.msg import BuzzerState, SetPWMServoState, PWMServ
 
 class SelfDrivingNode(Node):
     def __init__(self, name):
-        rclpy.init()
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
         self.name = name
         self.is_running = True
