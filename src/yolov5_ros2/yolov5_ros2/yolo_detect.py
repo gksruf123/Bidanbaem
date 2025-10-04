@@ -92,10 +92,13 @@ class YoloV5ONNXNode(Node):
 
             # pred[:4] 는 x1, y1, x2, y2
             x1, y1, x2, y2 = pred[:4]
-            x1 = int(x1 * orig_w / pred_w)
-            x2 = int(x2 * orig_w / pred_w)
-            y1 = int(y1 * orig_h / pred_h)
-            y2 = int(y2 * orig_h / pred_h)
+            x1 = x1 * orig_w // pred_w
+            x2 = x2 * orig_w // pred_w
+            y1 = y1 * orig_h // pred_h
+            y2 = y2 * orig_h // pred_h
+            center_x = min(depth.shape[1]-1, max(0, (x1 + x2)//2))
+            center_y = min(depth.shape[0]-1, max(0, (y1 + y2)//2))
+
             object_conf = float(pred[4])
             class_probs = pred[5:]
             cls_idx = int(np.argmax(class_probs))
@@ -123,7 +126,7 @@ class YoloV5ONNXNode(Node):
             obj_info.score = round(score, 2)
             obj_info.width = image.shape[1]
             obj_info.height = image.shape[0]
-            obj_info.distance = int(depth[int((y1+y2)/2), int((x1+x2)/2)])
+            obj_info.distance = int(depth[center_x, center_y])
             objects_info.append(obj_info)
 
             # Draw box
