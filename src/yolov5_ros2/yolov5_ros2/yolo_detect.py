@@ -117,7 +117,7 @@ class YoloV5Ros2(Node):
         depth = depth_inpaint.astype(np.float32)
 
         image_resized = cv2.resize(image, (640, 640))
-        detect_result = self.yolov5(image_resized)[0]
+        detect_result = self.yolov5.predict(image_resized)
         # detect_result = self.yolov5.predict(image)
 
         h_orig, w_orig = image.shape[:2]        # 원본 크기 (예: 480x640)
@@ -144,16 +144,13 @@ class YoloV5Ros2(Node):
 
 
         objects_info = []
-        for index in range(len(categories)):
-            # name = detect_result.names[int(categories[index])]
-            name = self.label_dict[str(categories[index])]
-            detection2d = Detection2D()
-            detection2d.id = name
-            x1, y1, x2, y2 = boxes[index]
-            # x1 = int(x1)
-            # y1 = int(y1)
-            # x2 = int(x2)
-            # y2 = int(y2)
+        for i, obj in enumerate(detect_result.xyxy[0]):
+            # 인식결과를 표시하기 위한 좌표를 얻음
+            x1, y1, x2, y2, _, cls = map(int, obj)
+            conf = obj[4]
+
+            # TODO: 인식된 정확도(confidence)와 클래스를 label로 구성
+            label = self.label_dict[str(cls)]
             x1 = int(x1 * scale_x)
             x2 = int(x2 * scale_x)
             y1 = int(y1 * scale_y)
@@ -164,36 +161,19 @@ class YoloV5Ros2(Node):
             box_distance = depth[int(center_y), int(center_x)]
             fence_distance = depth[10, 320]
 
-            if ros_distribution == 'galactic':
-                detection2d.bbox.center.x = center_x
-                detection2d.bbox.center.y = center_y
-            else:
-                detection2d.bbox.center.position.x = center_x
-                detection2d.bbox.center.position.y = center_y
-
-            detection2d.bbox.size_x = float(x2 - x1)
-            detection2d.bbox.size_y = float(y2 - y1)
-
-            obj_pose = ObjectHypothesisWithPose()
-            obj_pose.hypothesis.class_id = name
-            obj_pose.hypothesis.score = float(scores[index])
-
-            detection2d.results.append(obj_pose)
-            self.result_msg.detections.append(detection2d)
-
             # Draw results.
             if self.show_result or self.pub_result_img:
                 cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(image, f"{name}:{obj_pose.hypothesis.score:.2f}", (x1, y1),
+                cv2.putText(image, f"{label}:{conf}", (x1, y1),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 cv2.waitKey(1)
 
             h, w = image.shape[:2]
 
             object_info = ObjectInfo()
-            object_info.class_name = name
+            object_info.class_name = label
             object_info.box = [int(coord) for coord in [x1, y1, x2, y2]]
-            object_info.score = round(float(scores[index]), 2)
+            object_info.score = round(float(conf), 2)
             object_info.width = w
             object_info.height = h
             object_info.distance = int(box_distance)
@@ -216,8 +196,82 @@ class YoloV5Ros2(Node):
             result_img_msg = self.bridge.cv2_to_imgmsg(image, encoding="rgb8")
             result_img_msg.header = rgb_msg.header
             self.result_img_pub.publish(result_img_msg)
-        if len(categories) > 0:
-            self.yolo_result_pub.publish(self.result_msg)
+
+        
+        # for index in range(len(categories)):
+        #     # name = detect_result.names[int(categories[index])]
+        #     name = self.label_dict[str(categories[index])]
+        #     detection2d = Detection2D()
+        #     detection2d.id = name
+        #     x1, y1, x2, y2 = boxes[index]
+        #     # x1 = int(x1)
+        #     # y1 = int(y1)
+        #     # x2 = int(x2)
+        #     # y2 = int(y2)
+        #     x1 = int(x1 * scale_x)
+        #     x2 = int(x2 * scale_x)
+        #     y1 = int(y1 * scale_y)
+        #     y2 = int(y2 * scale_y)
+        #     center_x = (x1 + x2) / 2.0
+        #     center_y = (y1 + y2) / 2.0
+
+        #     box_distance = depth[int(center_y), int(center_x)]
+        #     fence_distance = depth[10, 320]
+
+        #     if ros_distribution == 'galactic':
+        #         detection2d.bbox.center.x = center_x
+        #         detection2d.bbox.center.y = center_y
+        #     else:
+        #         detection2d.bbox.center.position.x = center_x
+        #         detection2d.bbox.center.position.y = center_y
+
+        #     detection2d.bbox.size_x = float(x2 - x1)
+        #     detection2d.bbox.size_y = float(y2 - y1)
+
+        #     obj_pose = ObjectHypothesisWithPose()
+        #     obj_pose.hypothesis.class_id = name
+        #     obj_pose.hypothesis.score = float(scores[index])
+
+        #     detection2d.results.append(obj_pose)
+        #     self.result_msg.detections.append(detection2d)
+
+        #     # Draw results.
+        #     if self.show_result or self.pub_result_img:
+        #         cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        #         cv2.putText(image, f"{name}:{obj_pose.hypothesis.score:.2f}", (x1, y1),
+        #                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        #         cv2.waitKey(1)
+
+        #     h, w = image.shape[:2]
+
+        #     object_info = ObjectInfo()
+        #     object_info.class_name = name
+        #     object_info.box = [int(coord) for coord in [x1, y1, x2, y2]]
+        #     object_info.score = round(float(scores[index]), 2)
+        #     object_info.width = w
+        #     object_info.height = h
+        #     object_info.distance = int(box_distance)
+        #     object_info.fence_distance = int(fence_distance)
+        #     objects_info.append(object_info)
+
+        # object_msg = ObjectsInfo()
+        # object_msg.objects = objects_info
+        # self.object_pub.publish(object_msg)
+        # self.get_logger().info(f"\033[1;32m************************************\033[0m")
+
+        # # Display results if needed.
+        # if self.show_result:
+        #     self.fps.update()
+        #     image = self.fps.show_fps(image)
+        #     cv2.imshow('result', cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        #     cv2.waitKey(1)
+
+        # if self.pub_result_img:
+        #     result_img_msg = self.bridge.cv2_to_imgmsg(image, encoding="rgb8")
+        #     result_img_msg.header = rgb_msg.header
+        #     self.result_img_pub.publish(result_img_msg)
+        # if len(categories) > 0:
+        #     self.yolo_result_pub.publish(self.result_msg)
   
 
 def main():
