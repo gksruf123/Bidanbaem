@@ -70,6 +70,7 @@ class SelfDrivingNode(Node):
 
         self.mecanum_pub.publish(Twist())
         if not self.get_parameter('only_line_follow').value:
+        # 욜로 끄고 라인트랙킹만 제대로 되는지 확인하려면 이 코드 2줄을 없애면 될 듯? 아니면 time.sleep도 지우든가.
             self.send_request(self.start_yolov5_client, Trigger.Request())
         time.sleep(1)
         
