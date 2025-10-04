@@ -133,10 +133,15 @@ class YoloV5Ros2(Node):
 
         # Parse the results.
         # predictions = detect_result.pred[0]
-        predictions = detect_result
-        boxes = predictions[:, :4]  # x1, y1, x2, y2
-        scores = predictions[:, 4]
-        categories = predictions[:, 5]
+        # predictions = detect_result
+        # boxes = predictions[:, :4]  # x1, y1, x2, y2
+        # scores = predictions[:, 4]
+        # categories = predictions[:, 5]
+        results = detect_result[0] if isinstance(detect_result, list) else detect_result
+
+        boxes = results.boxes.xyxy.cpu().numpy()  # x1, y1, x2, y2
+        scores = results.boxes.conf.cpu().numpy()
+        classes = results.boxes.cls.cpu().numpy()
 
         objects_info = []
         for index in range(len(categories)):
