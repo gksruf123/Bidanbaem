@@ -57,7 +57,8 @@ class YoloV5Ros2(Node):
         model_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".onnx"
         label_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".names.json"
         device = self.get_parameter('device').value
-        self.yolov5 = YOLOv5(model_path=model_path, device=device)
+        # self.yolov5 = YOLOv5(model_path=model_path, device=device)
+        self.yolov5 = torch.hub.load("ultralytics/yolov5", "custom", path=model_path)
         with open(label_path, "r") as f:
             self.label_dict = json.load(f)
         # model_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".pt"
@@ -117,20 +118,11 @@ class YoloV5Ros2(Node):
         depth = depth_inpaint.astype(np.float32)
 
         image_resized = cv2.resize(image, (640, 640))
-        detect_result = self.yolov5.predict(image_resized)
+        detect_result = self.yolov5(image_resized)
         # detect_result = self.yolov5.predict(image)
-
-        if isinstance(detect_result, dict):
-            boxes = detect_result["boxes"]
-            scores = detect_result["scores"]
-            classes = detect_result["class_ids"]
-        else:
-            # 혹시 리스트나 튜플 형태일 경우
-            boxes, scores, classes = detect_result
 
         h_orig, w_orig = image.shape[:2]        # 원본 크기 (예: 480x640)
         h_resized, w_resized = 640, 640         # YOLO 입력 크기
-
         scale_x = w_orig / w_resized
         scale_y = h_orig / h_resized
 
