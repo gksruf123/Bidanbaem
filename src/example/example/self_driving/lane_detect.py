@@ -30,7 +30,7 @@ config_path = os.path.join(base_path, "lab_config.yaml")       # 최상위 Bidan
 
 lab_data = common.get_yaml_data(config_path)
 """
-lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
+#lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
 #lab_data = common.get_yaml_data("/shared/Bidanbaem/lab_config.yaml")
 
 class LaneDetector(object):
