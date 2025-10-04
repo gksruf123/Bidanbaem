@@ -133,7 +133,7 @@ class YoloV5Ros2(Node):
 
         # Parse the results.
         # predictions = detect_result.pred[0]
-        predictions = detect_result[0]
+        predictions = detect_result
         boxes = predictions[:, :4]  # x1, y1, x2, y2
         scores = predictions[:, 4]
         categories = predictions[:, 5]
