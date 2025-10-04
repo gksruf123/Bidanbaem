@@ -120,6 +120,14 @@ class YoloV5Ros2(Node):
         detect_result = self.yolov5.predict(image_resized)
         # detect_result = self.yolov5.predict(image)
 
+        if isinstance(detect_result, dict):
+            boxes = detect_result["boxes"]
+            scores = detect_result["scores"]
+            classes = detect_result["class_ids"]
+        else:
+            # 혹시 리스트나 튜플 형태일 경우
+            boxes, scores, classes = detect_result
+
         h_orig, w_orig = image.shape[:2]        # 원본 크기 (예: 480x640)
         h_resized, w_resized = 640, 640         # YOLO 입력 크기
 
@@ -137,10 +145,6 @@ class YoloV5Ros2(Node):
         # boxes = predictions[:, :4]  # x1, y1, x2, y2
         # scores = predictions[:, 4]
         # categories = predictions[:, 5]
-
-        boxes = detect_result.boxes.xyxy.cpu().numpy()
-        scores = detect_result.boxes.conf.cpu().numpy()
-        classes = detect_result.boxes.cls.cpu().numpy()
 
 
         objects_info = []
