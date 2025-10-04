@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+-#!/usr/bin/env python3
 # encoding: utf-8
 # @data:2023/03/28
 # @author:aiden
@@ -113,7 +113,7 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.6  # normal driving speed speed up
+        self.normal_speed = 0.1  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -122,18 +122,6 @@ class SelfDrivingNode(Node):
         self.object_sub = None
         self.image_sub = None
         self.objects_info = []
-        self.crosswalk_cool_until = 0.0 #쿨다운때 쓰려고 추가
-
-
-        #횡단보도 정차
-    def crosswalk_ready(self):
-        #쿨다운이 끝났는지 확인
-        return time.time() > self.crosswalk_cool_until
-
-    def set_crosswalk_cooldown(self, sec=3.0):
-        #쿨다운 타이머 
-        self.crosswalk_cool_until = time.time() + sec
-
 
     def get_node_state(self, request, response):
         response.success = True
@@ -270,21 +258,6 @@ class SelfDrivingNode(Node):
                 else:  # need to detect continuously, otherwise reset
                     self.count_crosswalk = 0
 
-                #cooldown
-                if self.active['crosswalk'] and self.crosswalk_ready():
-                    if self.active['red']:
-                        # red -> stop
-                        self.mecanum_pub.publish(Twist())
-                        self.stop = True
-                        self.set_crosswalk_cooldown(3.0)  # 이후 3초간 무시
-
-                    elif self.active['green']:
-                        # green pass
-                        twist.linear.x = self.slow_down_speed
-                        self.stop = False
-                        self.set_crosswalk_cooldown(3.0)  # 이후 3초간 무시
-
-
                 # deceleration processing
                 if self.start_slow_down:
                     if self.traffic_signs_status is not None:
@@ -393,10 +366,9 @@ class SelfDrivingNode(Node):
                 class_name = i.class_name
                 center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
                 
-                if class_name == 'crosswalk':
-                    if self.crosswalk_ready(): # NOT cool down update 
-                        if center[1] > min_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
-                            min_distance = center[1]
+                if class_name == 'crosswalk':  
+                    if center[1] > min_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
+                        min_distance = center[1]
                 elif class_name == 'right':  # obtain the right turning sign
                     self.count_right += 1
                     self.count_right_miss = 0
@@ -411,7 +383,154 @@ class SelfDrivingNode(Node):
 
             self.get_logger().info('\033[1;32m%s\033[0m' % class_name)
             self.crosswalk_distance = min_distance
+# ============================================================
+# [ADD-ON] 초록불 출발 + 횡단보도 3프레임 감지 시 정지 + 두 번째 신호등 제어
+# ============================================================
+import time
+from geometry_msgs.msg import Twist
 
+class SelfDrivingNode_FullCourse(SelfDrivingNode):
+    def __init__(self, name):
+        super().__init__(name)
+        # --- 주행 제어 상태 ---
+        self.started = False                      # 첫 번째 초록불 출발 여부
+        self.crosswalk_detect_count = 0           # 횡단보도 감지 프레임 누적
+        self.crosswalk_ignore_until = 0.0         # 횡단보도 무시 종료 시각
+        self.crosswalk_stop_until = 0.0           # 횡단보도 정차 종료 시각
+        self.second_signal_detected = False       # 두 번째 신호등 감지 여부
+        self.signal_stop = False                  # 신호 대기 중인지
+        # --- 설정값 ---
+        self.stop_duration = 3.0                  # 횡단보도 정지 시간 (초)
+        self.ignore_duration = 3.0                # 횡단보도 감지 무시 시간 (초)
+        self.crosswalk_threshold_y = 70           # 횡단보도 인식 거리 임계값
+        self.detect_frames_required = 3           # 횡단보도 감지 프레임 기준
+        self.second_signal_min_y = 180            # 두 번째 신호등 인식 거리 기준 (예시값, 필요 시 조정)
+        self.second_signal_hold = 2.0             # 신호등 정지 유지 시간 (빨간불일 경우 최소 정지)
+
+    def main(self):
+        while self.is_running:
+            start_time = time.time()
+            try:
+                image = self.image_queue.get(block=True, timeout=1)
+            except queue.Empty:
+                if not self.is_running: break
+                continue
+
+            result_image = image.copy()
+            now = time.time()
+
+            # --- 1️⃣ 첫 번째 신호등 초록불 감지 전: 정지 대기 ---
+            if not self.started:
+                if self.traffic_signs_status and self.traffic_signs_status.class_name == 'green':
+                    self.started = True
+                    self.get_logger().info('\033[1;32m[START]\033[0m 초록불 감지 → 출발')
+                else:
+                    self.mecanum_pub.publish(Twist())
+                    time.sleep(0.05)
+                    continue
+
+            twist = Twist()
+
+            # --- 2️⃣ 신호등 감지: 두 번째 신호등 제어 ---
+            # 두 번째 신호등은 초록/빨강 모두 인식됨 (거리 조건으로 판단)
+            if self.traffic_signs_status:
+                cls = self.traffic_signs_status.class_name
+                box = self.traffic_signs_status.box
+                center_y = int((box[1] + box[3]) / 2)
+
+                # 두 번째 신호등 구간 진입 (위치 기준)
+                if center_y > self.second_signal_min_y:
+                    if not self.second_signal_detected:
+                        self.second_signal_detected = True
+                        self.signal_stop = True
+                        self.mecanum_pub.publish(Twist())
+                        self.get_logger().info('\033[1;34m[SIGNAL]\033[0m 두 번째 신호등 인식 → 정지')
+
+                    # 신호 색상에 따라 행동 결정
+                    if self.signal_stop:
+                        if cls == 'red':
+                            # 빨간불이면 계속 대기
+                            self.mecanum_pub.publish(Twist())
+                            self.get_logger().info('\033[1;31m[RED]\033[0m 두 번째 신호등: 정지 유지')
+                        elif cls == 'green':
+                            # 초록불이면 다시 출발
+                            self.signal_stop = False
+                            self.get_logger().info('\033[1;32m[GREEN]\033[0m 초록불 → 통과')
+                    # 신호등 통과 후 더 이상 영향 안 주게 함
+                    if not self.signal_stop and cls == 'green':
+                        pass  # 그냥 주행 계속
+                # 아직 신호등 구간이 아니라면 아래 일반 주행 로직으로
+            # --- 3️⃣ 횡단보도 인식 제어 ---
+            crosswalk_detected_now = False
+            for obj in self.objects_info:
+                if obj.class_name == 'crosswalk':
+                    cy = int((obj.box[1] + obj.box[3]) / 2)
+                    if cy > self.crosswalk_threshold_y:
+                        crosswalk_detected_now = True
+                        break
+
+            # 정차 중이면 유지
+            if now < self.crosswalk_stop_until:
+                self.mecanum_pub.publish(Twist())
+                self.stop = True
+                self.get_logger().info('\033[1;31m[STOP]\033[0m 횡단보도 정차 중...')
+                self.crosswalk_detect_count = 0
+            # 무시 중이면 감지 무시
+            elif now < self.crosswalk_ignore_until:
+                self.stop = False
+                self.crosswalk_detect_count = 0
+                self.get_logger().info('\033[90m[IGNORE]\033[0m 횡단보도 감지 무시 중...')
+            # 평소 감지 중
+            else:
+                if crosswalk_detected_now:
+                    self.crosswalk_detect_count += 1
+                    self.get_logger().info(f"[DETECT] 횡단보도 감지 {self.crosswalk_detect_count}/{self.detect_frames_required}")
+                    # 3프레임 연속 감지 시 정차
+                    if self.crosswalk_detect_count >= self.detect_frames_required:
+                        self.crosswalk_stop_until = now + self.stop_duration
+                        self.crosswalk_ignore_until = now + self.stop_duration + self.ignore_duration
+                        self.mecanum_pub.publish(Twist())
+                        self.get_logger().info('\033[1;31m[STOP]\033[0m 횡단보도 3프레임 연속 감지 → 정차 시작')
+                        self.crosswalk_detect_count = 0
+                else:
+                    self.crosswalk_detect_count = 0
+
+            # --- 4️⃣ 기본 라인트레이싱 ---
+            if not self.stop and not self.signal_stop and now >= self.crosswalk_stop_until:
+                binary_image = self.lane_detect.get_binary(image)
+                result_image, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())
+                if lane_x >= 0:
+                    self.pid.SetPoint = 130
+                    self.pid.update(lane_x)
+                    twist.linear.x = self.normal_speed
+                    twist.angular.z = common.set_range(self.pid.output, -0.1, 0.1)
+                    self.mecanum_pub.publish(twist)
+                else:
+                    self.pid.clear()
+
+            # --- 5️⃣ 결과 퍼블리시 ---
+            bgr = cv2.cvtColor(result_image, cv2.COLOR_RGB2BGR)
+            if self.display:
+                self.fps.update()
+                bgr = self.fps.show_fps(bgr)
+            self.result_publisher.publish(self.bridge.cv2_to_imgmsg(bgr, "bgr8"))
+
+            remain = 0.03 - (time.time() - start_time)
+            if remain > 0:
+                time.sleep(remain)
+
+        self.mecanum_pub.publish(Twist())
+        rclpy.shutdown()
+
+
+def main_full():
+    node = SelfDrivingNode_FullCourse('self_driving_fullcourse')
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    executor.spin()
+    node.destroy_node()
+
+"""
 def main():
     node = SelfDrivingNode('self_driving')
     executor = MultiThreadedExecutor()
@@ -421,5 +540,5 @@ def main():
  
 if __name__ == "__main__":
     main()
-
+"""
     
