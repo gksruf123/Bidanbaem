@@ -315,7 +315,7 @@ class SelfDrivingNode(Node):
 
                         now = time.time()
                         if strength > 0.05:
-                            self.avoid_until = max(self.avoid_until, now + 0.35)
+                            self.avoid_until = max(self.avoid_until, now + 0.20)
 
                         # === 회피 여부 결정 ===
                         if (strength > 0.0) or (now < self.avoid_until):
