@@ -500,6 +500,7 @@ class SelfDrivingNode(Node):
                 obj_distance = i.distance
                 self.fence_distance = i.fence_distance
                 class_set.add(class_name)
+                self.get_logger().info(f"\033[1;31m**class name: {class_name}**\033[0m")
                 
                 if class_name == 'crosswalk':
                     self.detected_cw = True
@@ -522,6 +523,8 @@ class SelfDrivingNode(Node):
                     self.sign_distance = obj_distance
                     self.is_start = True
 
+            self.get_logger().info(f"\033[1;31m**objects num: {len(self.objects_info)}**\033[0m")
+            self.get_logger().info(f"\033[1;31m**class num: {len(class_set)}**\033[0m")
             if len(class_set) >= 2:
                 self.wait_can_finish = True
                     # self.get_logger().info(f"\033[1;31m**detected {class_name}**\033[0m")
