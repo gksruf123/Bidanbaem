@@ -12,9 +12,10 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/slam.launch.py']),  # <- important
         ('share/' + package_name + '/config', [
-            'config/slam_params.yaml',
+            'config/slam_toolbox_params.yaml',
             'config/ekf.yaml',
             'config/nav_params.yaml'
+            'config/slam_nav.rviz'
         ]),
     ],
     install_requires=['setuptools'],

@@ -1,0 +1,26 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Name: root
+  Displays:
+    - Name: TF
+      Class: rviz/TF
+      Enabled: true
+    - Name: RobotModel
+      Class: rviz/RobotModel
+      Enabled: true
+      Robot Description: robot_description
+      TF Prefix: ''
+    - Name: Map
+      Class: rviz/Map
+      Enabled: true
+      Topic: /map
+    - Name: LaserScan
+      Class: rviz/LaserScan
+      Enabled: true
+      Topic: /scan
+  Global Options:
+    Fixed Frame: map
+    Frame Rate: 30
