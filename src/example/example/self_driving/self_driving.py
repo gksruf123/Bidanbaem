@@ -96,6 +96,7 @@ class SelfDrivingNode(Node):
         self.wait = True
         self.stop = False
         self.turn = False
+        self.detect = True
 
         self.detected_cw = False
         self.detected_go = False
@@ -135,6 +136,7 @@ class SelfDrivingNode(Node):
 
     def call_start(self):
         self.wait_can_finish = False
+        self.detect = True
         req = Trigger.Request()
         future = self.start_yolov5_client.call_async(req)
         future.add_done_callback(self._on_start_response)
@@ -150,6 +152,7 @@ class SelfDrivingNode(Node):
             self.get_logger().error(f"[START] 서비스 호출 실패: {e}")
 
     def call_stop(self):
+        self.detect = False
         req = Trigger.Request()
         future = self.stop_yolov5_client.call_async(req)
         future.add_done_callback(self._on_stop_response)
@@ -481,47 +484,48 @@ class SelfDrivingNode(Node):
     # Obtain the target detection result
     def get_object_callback(self, msg):
         self.objects_info = msg.objects
-        if self.objects_info == []:  # If it is not recognized, reset the variable
-            self.traffic_signs_status = None
-            self.cw_distance = -1
-            self.right_distance = -1
-            self.sign_distance = -1
+        if self.detect:
+            if self.objects_info == []:  # If it is not recognized, reset the variable
+                self.traffic_signs_status = None
+                self.cw_distance = -1
+                self.right_distance = -1
+                self.sign_distance = -1
 
-            self.detected_cw = False
-            self.detected_go = False
-            self.detected_right = False
-            self.detected_park = False
-        else:
-            self.cw_distance = 10000
-            class_set = set()
-            for i in self.objects_info:
-                class_name = i.class_name
-                center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
-                obj_distance = i.distance
-                self.fence_distance = i.fence_distance
-                class_set.add(class_name)
-                self.get_logger().info(f"\033[1;31m**class name: {class_name}**\033[0m")
-                
-                if class_name == 'crosswalk':
-                    self.detected_cw = True
-                    if obj_distance < self.cw_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
-                        self.cw_distance = obj_distance
-                elif class_name == 'go':  # obtain the go sign
-                    self.detected_go = True
-                    self.sign_distance = obj_distance
-                elif class_name == 'right':  # obtain the right turning sign
-                    self.detected_cw = True
-                    self.right_distance = obj_distance
-                    self.sign_distance = obj_distance
-                elif class_name == 'park':  # obtain the center coordinate of the parking sign
-                    self.detected_park = True
-                elif class_name == 'red':
-                    self.traffic_signs_status = 'red'
-                    self.sign_distance = obj_distance
-                elif class_name == 'green':  # obtain the status of the traffic light
-                    self.traffic_signs_status = 'green'
-                    self.sign_distance = obj_distance
-                    self.is_start = True
+                self.detected_cw = False
+                self.detected_go = False
+                self.detected_right = False
+                self.detected_park = False
+            else:
+                self.cw_distance = 10000
+                class_set = set()
+                for i in self.objects_info:
+                    class_name = i.class_name
+                    center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
+                    obj_distance = i.distance
+                    self.fence_distance = i.fence_distance
+                    class_set.add(class_name)
+                    self.get_logger().info(f"\033[1;31m**class name: {class_name}**\033[0m")
+                    
+                    if class_name == 'crosswalk':
+                        self.detected_cw = True
+                        if obj_distance < self.cw_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
+                            self.cw_distance = obj_distance
+                    elif class_name == 'go':  # obtain the go sign
+                        self.detected_go = True
+                        self.sign_distance = obj_distance
+                    elif class_name == 'right':  # obtain the right turning sign
+                        self.detected_cw = True
+                        self.right_distance = obj_distance
+                        self.sign_distance = obj_distance
+                    elif class_name == 'park':  # obtain the center coordinate of the parking sign
+                        self.detected_park = True
+                    elif class_name == 'red':
+                        self.traffic_signs_status = 'red'
+                        self.sign_distance = obj_distance
+                    elif class_name == 'green':  # obtain the status of the traffic light
+                        self.traffic_signs_status = 'green'
+                        self.sign_distance = obj_distance
+                        self.is_start = True
 
             self.get_logger().info(f"\033[1;31m**objects num: {len(self.objects_info)}**\033[0m")
             self.get_logger().info(f"\033[1;31m**class num: {len(class_set)}**\033[0m")
