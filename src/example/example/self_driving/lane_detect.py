@@ -16,7 +16,7 @@ import numpy as np
 bridge = CvBridge()
 
 username = os.getenv("USER")
-if username == "pi":
+if username == "ubuntu":
     config_path = "/home/ubuntu/software/lab_tool/lab_config.yaml"
 else:
     config_path = "/home/intel/ros2_ws/lab_config.yaml"
