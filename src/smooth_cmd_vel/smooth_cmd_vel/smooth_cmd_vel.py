@@ -52,3 +52,18 @@ class SmoothCmdVel(Node):
 
         # ---- 퍼블리시 ----
         self.cmd_pub.publish(self.current_twist)
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SmoothCmdVel()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info('🛑 [smooth_cmd_vel] Node stopped by user.')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()
