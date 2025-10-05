@@ -51,7 +51,7 @@ class YoloV5Ros2(Node):
         self.create_service(Trigger, '~/init_finish', self.get_node_state)
 
         # Load the model.
-        model_path = package_share_directory + "/config/" + self.get_parameter('model').value + ".pt"
+        model_path = package_share_directory + "/config/new_model.onnx"
         device = self.get_parameter('device').value
         self.yolov5 = YOLOv5(model_path=model_path, device=device)
 

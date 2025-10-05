@@ -57,11 +57,11 @@ class SelfDrivingNode(Node):
         # self.heart = Heart(self.name + '/heartbeat', 5, lambda _: self.exit_srv_callback(None))
         timer_cb_group = ReentrantCallbackGroup()
         self.client = self.create_client(Trigger, '/yolov5_ros2/init_finish')
-        # self.client.wait_for_service()
+        self.client.wait_for_service()
         self.start_yolov5_client = self.create_client(Trigger, '/yolov5/start', callback_group=timer_cb_group)
-        # self.start_yolov5_client.wait_for_service()
+        self.start_yolov5_client.wait_for_service()
         self.stop_yolov5_client = self.create_client(Trigger, '/yolov5/stop', callback_group=timer_cb_group)
-        # self.stop_yolov5_client.wait_for_service()
+        self.stop_yolov5_client.wait_for_service()
 
         self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
         
@@ -70,11 +70,11 @@ class SelfDrivingNode(Node):
         self.timer.cancel()
 
         self.mecanum_pub.publish(Twist())
-        # if not self.get_parameter('only_line_follow').value:
-        # # 이 부분이랑 __init__의 wait_for_service 3개가 욜로 무한으로 기다리는 로직인 듯?
-        # # 근데 예전에 욜로 안 넣었을 땐 어떻게 실행된 거지?
-        #     self.send_request(self.start_yolov5_client, Trigger.Request())
-        # time.sleep(1)
+        if not self.get_parameter('only_line_follow').value:
+        # 이 부분이랑 __init__의 wait_for_service 3개가 욜로 무한으로 기다리는 로직인 듯?
+        # 근데 예전에 욜로 안 넣었을 땐 어떻게 실행된 거지?
+            self.send_request(self.start_yolov5_client, Trigger.Request())
+        time.sleep(1)
         
         if 1:#self.get_parameter('start').value:
             self.display = True
