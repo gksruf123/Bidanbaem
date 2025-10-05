@@ -30,6 +30,7 @@ class MSMDriver(Node):
 
         self.cmd_vel_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
 
+        self.dist_threshold = 0.01 # in m
         self.max_linear_speed = 0.5
         self.max_strafe_speed = 0.3
         self.max_angular_speed = 3.0
@@ -52,12 +53,25 @@ class MSMDriver(Node):
         self.init_timer = self.create_timer(0.01, self.init_process)  # Use different variable name
         self.tick_timer = self.create_timer(0.02, self.tick_speed)  # 50hz tick
 
+        self.current_target:Point = None
+        self.current_target_time = self.get_clock().now()
+        self.odom = Odometry()
+
+    @property
+    def pos(self):
+        return self.odom.pose.pose.position
+    
+    @property
+    def ori(self):
+        return self.odom.pose.pose.orientation
+
     def enqueue(self, q:queue.Queue, item):
         try:
             q.put_nowait(item)
         except queue.Full:
             _ = q.get_nowait()
             q.put_nowait(item)
+            self.current_target = item
     
     def logic_cb(self, msg_logic): 
         partial(self.enqueue, self.target, msg_logic)()
@@ -69,59 +83,74 @@ class MSMDriver(Node):
             angle += 2.0 * math.pi
         return angle
 
+    def dist_sq(self, x1, y1, x2, y2):
+        return (x1-x2)**2 + (y1-y2)**2
+    
+    def reached_target(self):
+        if not self.current_target:
+            return True
+        targ = self.current_target
+        dist = self.dist_sq(targ.x, self.pos.x, targ.y, self.pos.y)
+        if dist < self.dist_threshold **2:
+            self.current_target = None
+            return True
+        return False
+
     def odom_cb(self, msg_odom:Odometry):
-        def dist_sq(x1,y1,x2,y2):
-            return (x1-x2)**2+(y1-y2)**2
-            
         def yaw_from_quaternion(q):
             siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
             cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
             return math.atan2(siny_cosp, cosy_cosp)
             
-        pose = msg_odom.pose.pose
-        pos = pose.position
-        ori = pose.orientation
+        self.odom = msg_odom
+        # pose = msg_odom.pose.pose
+        pos = self.pos
+        ori = self.ori
         
         if self.target.empty():  # Fixed: check if queue is empty
-            self.stop()
+            if self.reached_target():
+                self.stop()
             return
             
         try:
             target = self.target.get_nowait()  # Use get_nowait to avoid blocking
+            self.current_target = target
             self.target.task_done()
+            self.current_target_time = self.get_clock().now()
         except queue.Empty:
-            self.stop()
+            if self.reached_target():
+                self.stop()
             return
             
-        cmd_vel = Twist()
-        dx = target.x - pos.x
-        dy = target.y - pos.y
-        dist_squared = dx*dx + dy*dy  # Use squared distance for comparison
-        self.current_theta = yaw_from_quaternion(ori)
+        # cmd_vel = Twist()
+        # dx = target.x - pos.x
+        # dy = target.y - pos.y
+        # dist_squared = dx*dx + dy*dy  # Use squared distance for comparison
+        # self.current_theta = yaw_from_quaternion(ori)
 
-        if dist_squared > (0.01**2):  # if dist > 10mm
-            # Calculate direction vector and normalize
-            distance = math.sqrt(dist_squared)
-            direction_x = dx / distance
-            direction_y = dy / distance
+        # if not self.reached_target():
+        #     # Calculate direction vector and normalize
+        #     distance = math.sqrt(dist_squared)
+        #     direction_x = dx / distance
+        #     direction_y = dy / distance
             
-            # Scale by max speed
-            speed = min(self.max_linear_speed, distance * 1.0)  # Simple P-control
-            cmd_vel.linear.x = direction_x * speed
-            cmd_vel.linear.y = direction_y * speed
+        #     # Scale by max speed
+        #     speed = min(self.max_linear_speed, distance * 1.0)  # Simple P-control
+        #     cmd_vel.linear.x = direction_x * speed
+        #     cmd_vel.linear.y = direction_y * speed
             
-            # Limit strafe speed
-            if abs(cmd_vel.linear.y) > self.max_strafe_speed:
-                cmd_vel.linear.y = math.copysign(self.max_strafe_speed, cmd_vel.linear.y)
+        #     # Limit strafe speed
+        #     if abs(cmd_vel.linear.y) > self.max_strafe_speed:
+        #         cmd_vel.linear.y = math.copysign(self.max_strafe_speed, cmd_vel.linear.y)
         
-        desired_angle = math.atan2(dy, dx)
-        angle_delta = self.normalize_angle(desired_angle - self.current_theta)
+        # desired_angle = math.atan2(dy, dx)
+        # angle_delta = self.normalize_angle(desired_angle - self.current_theta)
         
-        # Angular control with speed limiting
-        angular_cmd = 1.2 * angle_delta
-        cmd_vel.angular.z = max(-self.max_angular_speed, min(self.max_angular_speed, angular_cmd))
+        # # Angular control with speed limiting
+        # angular_cmd = 1.2 * angle_delta
+        # cmd_vel.angular.z = max(-self.max_angular_speed, min(self.max_angular_speed, angular_cmd))
 
-        self.set_target_speed(tw=cmd_vel)
+        # self.set_target_speed(tw=cmd_vel)
 
     def limit(self, cur, targ, max_accel, dt):
         delta = targ - cur
@@ -143,16 +172,18 @@ class MSMDriver(Node):
             return
 
         vel = Twist()
-        vel.linear.x = self.limit(self.cvx, self.tvx, self.max_linear_accel, dt)
-        vel.linear.y = self.limit(self.cvy, self.tvy, self.max_strafe_accel, dt)
-        vel.angular.z = self.limit(self.caz, self.taz, self.max_angular_accel, dt)  # Fixed: max_angular_accel
+        if not self.reached_target():
+            vel.linear.x = self.limit(self.cvx, self.tvx, self.max_linear_accel, dt)
+            vel.linear.y = self.limit(self.cvy, self.tvy, self.max_strafe_accel, dt)
+            # Update current speeds
+            self.cvx = vel.linear.x
+            self.cvy = vel.linear.y  
 
-        # Update current speeds
-        self.cvx = vel.linear.x
-        self.cvy = vel.linear.y  
+        vel.angular.z = self.limit(self.caz, self.taz, self.max_angular_accel, dt)  # Fixed: max_angular_accel
         self.caz = vel.angular.z
 
         self.cmd_vel_pub.publish(vel)
+        self.set_target_speed(tw=vel)
         self.lt = ct
 
     def set_target_speed(self, x=0.0, y=0.0, z=0.0, tw:Twist=None):
@@ -208,3 +239,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

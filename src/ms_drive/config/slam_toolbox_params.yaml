@@ -1,0 +1,24 @@
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    map_update_interval: 5.0
+    max_laser_range: 10.0
+    resolution: 0.05
+
+    use_scan_matching: true
+    use_scan_barycenter: false
+    minimum_travel_distance: 0.2
+    minimum_travel_heading: 0.1
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+
+    do_loop_closing: true
+    do_covariance_estimation: true
+    loop_search_maximum_distance: 3.0
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coefficient: 1.0
+
+    scan_topic: /scan_raw
+    base_frame: base_link
+    odom_frame: odom
+    map_frame: map

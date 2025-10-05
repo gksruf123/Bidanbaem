@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from collections import defaultdict
+from enum import IntEnum
 import json
 import math
 import threading
@@ -16,11 +18,21 @@ from nav_msgs.msg import Odometry
 from rclpy.time import Time
 import numpy as np
 import queue
+from ms_drive.util import *
+from std_srvs.srv import SetBool, Trigger
+
 
 ### Check camera transform ### 
 import tf2_ros
 import tf2_geometry_msgs
 from geometry_msgs.msg import PointStamped
+
+class Status(IntEnum):
+    stopped = 0
+    turning = 1
+    moving = 2
+    scanning = 3
+
 
 class PixelToOdomTransformer:
     def __init__(self, node):
@@ -95,25 +107,6 @@ class PixelToOdomTransformer:
         
         return odom_point
 
-def yaw_to_quaternion(yaw):
-    q = Quaternion()
-    q.x = 0.0
-    q.y = 0.0
-    q.z = math.sin(yaw/2.0)
-    q.w = math.cos(yaw/2.0)
-    return q
-
-def yaw_from_quaternion(q):
-    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-    return math.atan2(siny_cosp, cosy_cosp)
-
-def yaw_from_quaternion_deg(q):
-    siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-    cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-    yaw = math.atan2(siny_cosp, cosy_cosp)
-    return math.degrees(yaw)
-
 class Navigation(Node):
     def __init__(self, name='MS_Self_Drive'):
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
@@ -149,7 +142,9 @@ class Navigation(Node):
         self.frame_count = 0
         self.last_print = time.time()
         self.qc = 0
-        self.status = 'lane_following'
+        self.status = Status.scanning
+        self.crosswalks = 0
+        self.rightturns = 0
         
         # Navigation control parameters
         self.current_target = None
@@ -172,8 +167,21 @@ class Navigation(Node):
         self.kp_strafe = 0.8
         self.kp_heading = 1.0
 
+
+        self.yolov5_start_client = self.create_client(Trigger, '/yolov5/start')
+        self.yolov5_stop_client = self.create_client(Trigger, '/yolov5/stop')
+        # self.yolov5_start_client.wait_for_service() ### disable for debug
+        # self.yolov5_stop_client.wait_for_service()
+        # self.activate_yolo()
+
+        self.create_service(Trigger, '/ms_driver/arrived', self.arrive_srv_cb)
         self.wheel_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
+        self.logic_pub = self.create_publisher(Point, '/ms_logic', 1)
+        """Point, Linear Z 0.0 means target, alignment otherwise"""
         self.timer = self.create_timer(0.0, self.init_process)
+
+        self.detects = defaultdict()
+        """[name]: {name, box, count}"""
 
         self.get_logger().info("Lane following with persistent target tracking started")
 
@@ -358,6 +366,43 @@ class Navigation(Node):
         print(f'twist_l: (x:{twist_l.x:.3f}, y:{twist_l.y:.2f})')
         print(f'twist_a: (z:{twist_a.z:.2f})')
 
+    def arrive_srv_cb(self, req, resp):
+        self.get_logger().info('driver has arrived')
+        self.status = Status.stopped
+        resp.success = True
+        resp.message = 'OK'
+        return resp
+
+    def send_request(self, client, msg):
+        future = client.call_async(msg)
+        while rclpy.ok():
+            if future.done() and future.result():
+                return future.result()
+
+    def activate_yolo(self):
+        self.send_request(self.yolov5_start_client, Trigger.Request())
+        self.yolo5_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.yolo_cb, 1)
+
+    def deactivate_yolo(self):
+        self.yolo5_sub.destroy()
+        self.send_request(self.yolov5_stop_client, Trigger.Request())
+        self.detects.clear()
+
+    def yolo_cb(self, msg:ObjectsInfo):
+        objects = msg.objects
+        if not objects:
+            return
+        for obj in objects:
+            obj:ObjectInfo
+            name = obj.class_name
+            points = obj.box
+            if name in self.detects:
+                count = self.detects[name]['count'] + 1
+            else:
+                count = 0
+            self.detects[name] = {'name':name, 'box':points, 'count':count}
+            
+
     def direct(self, rgb_m, dep_m, odom_m:Odometry):
         # self.print_odom(odom_m)
         self.proc(rgb_m, dep_m, odom_m)
@@ -367,6 +412,50 @@ class Navigation(Node):
         cv2.floodFill(mask, _mask, point, newVal=255, 
                       flags=cv2.FLOODFILL_MASK_ONLY | (255 << 8))
         return _mask[1:-1, 1:-1]
+    
+    def lane_detection(self, mask):
+        h, w = mask.shape[:2]
+        # Lane detection
+        seedpoint_l = None
+        _x = w//2 - 1
+        _y = h-1
+        while _x > 0:
+            if mask[h-1, _x]:
+                seedpoint_l = (_x, h-1)
+                break
+            _x -= 1
+        if not seedpoint_l:
+            while _y > 0:
+                if mask[_y, _x]:
+                    seedpoint_l = (_x, _y)
+                    break
+                _y -= 1
+
+        seedpoint_r = None
+        _x = w//2
+        _y = h-1
+        while _x < w - 1:
+            if mask[h-1, _x]:
+                seedpoint_r = (_x, h-1)
+                break
+            _x += 1
+        if not seedpoint_r:
+            while _y > 0:
+                if mask[_y, _x]:
+                    seedpoint_r = (_x, _y)
+                    break
+                _y -= 1
+
+        ff_left = None
+        ff_right = None
+        ff_right_far = None
+        
+        if seedpoint_l:
+            ff_left = self.ff_mask(mask.copy(), seedpoint_l)
+        if seedpoint_r:
+            ff_right = self.ff_mask(mask.copy(), seedpoint_r)
+
+        return seedpoint_l, seedpoint_r, ff_left, ff_right        
 
     def proc(self, rgb_m, dep_m, odom_m:Odometry = None):
         image_bgr = self.cv_bridge.imgmsg_to_cv2(rgb_m, 'bgr8')
@@ -394,51 +483,17 @@ class Navigation(Node):
         kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel_close)
 
-        # Lane detection
-        seedpoint_l = None
-        _x = w//2 - 1
-        _y = h-1
-        while _x > 0:
-            if mask_lab[h-1, _x]:
-                seedpoint_l = (_x, h-1)
-                break
-            _x -= 1
-        if not seedpoint_l:
-            while _y > 0:
-                if mask_lab[_y, _x]:
-                    seedpoint_l = (_x, _y)
-                    break
-                _y -= 1
-
-        seedpoint_r = None
-        _x = w//2
-        _y = h-1
-        while _x < w - 1:
-            if mask_lab[h-1, _x]:
-                seedpoint_r = (_x, h-1)
-                break
-            _x += 1
-        if not seedpoint_r:
-            while _y > 0:
-                if mask_lab[_y, _x]:
-                    seedpoint_r = (_x, _y)
-                    break
-                _y -= 1
-
-        ff_left = None
-        ff_right = None
-        ff_right_far = None
-        
-        if seedpoint_l:
-            ff_left = self.ff_mask(mask_lab.copy(), seedpoint_l)
-        if seedpoint_r:
-            ff_right = self.ff_mask(mask_lab.copy(), seedpoint_r)
+        seedpoint_l, seedpoint_r, ff_left, ff_right = self.lane_detection(cleaned)
 
         target_point = None
         target_depth = 0
         new_target_found = False
         # Convert mask to BGR for visualization
         out = cv2.cvtColor(mask_lab, cv2.COLOR_GRAY2BGR)
+
+        self.get_logger().info(f'stat: {self.status}')
+        if not self.status == Status.stopped | Status.scanning: ## only find target when stopped. 
+            return
         
         # Find target point between lanes
         if seedpoint_l and seedpoint_r:
@@ -452,13 +507,20 @@ class Navigation(Node):
                     rx = lr[0]
                     if rx in ll:
                         break
-                    if rx - lx < 100:
+                    if rx - lx < 100: ## 
                         target_point = None
                         break
                     else:
                         target_point = ((lx+rx)//2, _y)
                         target_depth = image_dep[_y, (lx+rx)//2]
                         new_target_found = True
+                        if self.crosswalks % 2:
+                            self.status = Status.turning
+                            self.rightturns += 1
+                        else:
+                            self.status = Status.moving
+                            self.crosswalks += 1
+
                     cv2.line(mask_lab, (lx, _y), (rx, _y), (128,128,128), 2)
                     break
                 _y += _step
@@ -485,6 +547,7 @@ class Navigation(Node):
         cv2.circle(out, (332,232), 1, (255,0,0), 1) # true center
         cv2.imshow('lab mask', out)
         cv2.waitKey(1)
+
         return
 
         current_time = time.time()
@@ -558,16 +621,7 @@ class Navigation(Node):
 
             cv2.putText(out, f'Odom: ({self.current_target[0]:.2f}, {self.current_target[1]:.2f})', 
                        (10, h-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            
-            # Publish target point for visualization
-            pose_msg = PoseStamped()
-            pose_msg.header.stamp = self.get_clock().now().to_msg()
-            pose_msg.header.frame_id = "odom"
-            pose_msg.pose.position.x = self.current_target[0]
-            pose_msg.pose.position.y = self.current_target[1]
-            pose_msg.pose.position.z = 0.0
-            pose_msg.pose.orientation.w = 1.0
-            self.target_point_pub.publish(pose_msg)
+
 
             # Visualize the target point if it's a new detection
             if new_target_found and target_point:
@@ -605,7 +659,6 @@ class Navigation(Node):
 def main():
     cv2.namedWindow('lab mask')
     cv2.moveWindow('lab mask', 0, 0)
-    cv2.namedWindow('img')
     rclpy.init(args=None)
     node = Navigation()
     
