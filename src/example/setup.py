@@ -51,6 +51,7 @@ setup(
             'vc_track_and_grab = example.rgbd_function.vc_track_and_grab:main',
             'automatic_pick = example.navigation_transport.automatic_pick:main',
             'navigation_transport = example.navigation_transport.navigation_transport:main',
+            'smooth_cmd_vel = example.smooth_cmd_vel.smooth_cmd_vel:main',
         ],
     },
 )

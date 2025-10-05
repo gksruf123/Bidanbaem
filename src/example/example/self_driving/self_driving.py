@@ -51,7 +51,8 @@ class SelfDrivingNode(Node):
         self.get_logger().info(f"\033[1;31mself.machine_type: {self.machine_type}\033[0m")
         self.lane_detect = lane_detect.LaneDetector("yellow")
 
-        self.mecanum_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
+        # self.mecanum_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
+        self.mecanum_pub = self.create_publisher(Twist, '/cmd_vel_input', 1)
         self.servo_state_pub = self.create_publisher(SetPWMServoState, 'ros_robot_controller/pwm_servo/set_state', 1)
         self.result_publisher = self.create_publisher(Image, '~/image_result', 1)
         self.odom_subscriber = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)

@@ -60,6 +60,13 @@ def launch_setup(context):
         parameters=[{'start': start}, {'only_line_follow': only_line_follow}],
     )
 
+    smooth_cmd_vel_node = Node(
+        package='example',
+        executable='smooth_cmd_vel',
+        output='screen',
+    )
+
+
     return [start_arg,
             only_line_follow_arg,
             depth_camera_launch,
@@ -67,6 +74,7 @@ def launch_setup(context):
             #web_video_server_node,
             yolov5_node, 
             self_driving_node,
+            smooth_cmd_vel_node,
             ]
 
 def generate_launch_description():
