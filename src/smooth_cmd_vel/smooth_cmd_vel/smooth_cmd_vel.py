@@ -8,9 +8,10 @@ class SmoothCmdVel(Node):
         super().__init__('smooth_cmd_vel')
 
         # ✅ 파라미터 (필요하면 launch에서 바꿀 수 있음)
-        self.declare_parameter('rate_hz', 20.0)
-        self.declare_parameter('max_accel_linear', 0.25)   # m/s²
-        self.declare_parameter('max_accel_angular', 0.8)   # rad/s²
+        self.declare_parameter('rate_hz', 30.0)
+        self.declare_parameter('max_accel_linear', 1.2)   # m/s² (기존보다 약 5배 빠름)
+        self.declare_parameter('max_accel_angular', 3.0)  # rad/s²
+
 
         # ✅ 파라미터 로드
         self.rate_hz = self.get_parameter('rate_hz').get_parameter_value().double_value
