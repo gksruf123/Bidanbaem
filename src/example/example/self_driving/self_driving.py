@@ -57,11 +57,11 @@ class SelfDrivingNode(Node):
         # self.heart = Heart(self.name + '/heartbeat', 5, lambda _: self.exit_srv_callback(None))
         timer_cb_group = ReentrantCallbackGroup()
         self.client = self.create_client(Trigger, '/yolov5_ros2/init_finish')
-        self.client.wait_for_service()
+        # self.client.wait_for_service()
         self.start_yolov5_client = self.create_client(Trigger, '/yolov5/start', callback_group=timer_cb_group)
-        self.start_yolov5_client.wait_for_service()
+        # self.start_yolov5_client.wait_for_service()
         self.stop_yolov5_client = self.create_client(Trigger, '/yolov5/stop', callback_group=timer_cb_group)
-        self.stop_yolov5_client.wait_for_service()
+        # self.stop_yolov5_client.wait_for_service()
 
         self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
         
@@ -70,9 +70,11 @@ class SelfDrivingNode(Node):
         self.timer.cancel()
 
         self.mecanum_pub.publish(Twist())
-        if not self.get_parameter('only_line_follow').value:
-            self.send_request(self.start_yolov5_client, Trigger.Request())
-        time.sleep(1)
+        # if not self.get_parameter('only_line_follow').value:
+        # # 이 부분이랑 __init__의 wait_for_service 3개가 욜로 무한으로 기다리는 로직인 듯?
+        # # 근데 예전에 욜로 안 넣었을 땐 어떻게 실행된 거지?
+        #     self.send_request(self.start_yolov5_client, Trigger.Request())
+        # time.sleep(1)
         
         if 1:#self.get_parameter('start').value:
             self.display = True
@@ -114,7 +116,7 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.5  # normal driving speed
+        self.normal_speed = 0.2  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -124,8 +126,20 @@ class SelfDrivingNode(Node):
         self.image_sub = None
         self.objects_info = []
 
+        self.depth_sub = None
+        self.depth_image = None
+        self.depth_stamp = None
+        self.avoid_until = 0.0
+        self.dmin_ema = None        # d_min 평활화용
+        self.min_wall_speed = 0.05
+        self.last_avoid_s = 0.0
+
         self.last_stop_time = 0     # 횡단보도 마지막에 멈췄던 시간 체크용
         self.stop_cooldown = 3.0    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
+
+        self.stop_duration = 1.0  # 원하는 정지 시간(초)
+        self.stop_until = 0.0
+        
 
     def get_node_state(self, request, response):
         response.success = True
@@ -143,6 +157,7 @@ class SelfDrivingNode(Node):
             self.start = False
             camera = 'depth_cam'#self.get_parameter('depth_camera_name').value
             self.image_sub = self.create_subscription(Image, '/ascamera/camera_publisher/rgb0/image' , self.image_callback, 1)
+            self.depth_sub = self.create_subscription(Image, '/ascamera/camera_publisher/depth0/image_raw', self.depth_callback, 1)
             self.object_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.get_object_callback, 1)
             self.mecanum_pub.publish(Twist())
             self.enter = True
@@ -161,6 +176,10 @@ class SelfDrivingNode(Node):
                 if self.object_sub:
                     self.destroy_subscription(self.object_sub)
                     self.object_sub = None
+
+                if self.depth_sub:
+                    self.destroy_subscription(self.depth_sub)
+                    self.depth_sub = None
             except Exception as e:
                 self.get_logger().info('\033[1;32m%s\033[0m' % str(e))
             self.mecanum_pub.publish(Twist())
@@ -190,6 +209,20 @@ class SelfDrivingNode(Node):
             self.image_queue.get()
         # put the image into the queue
         self.image_queue.put(rgb_image)
+    
+    def depth_callback(self, ros_depth):
+        depth = self.bridge.imgmsg_to_cv2(ros_depth, desired_encoding='passthrough')
+
+        if depth.dtype == np.uint16:
+            depth_m = depth.astype(np.float32) / 1000.0
+        elif depth.dtype == np.float32:
+            depth_m = depth
+        else:
+            return
+        
+        with self.lock:
+            self.depth_image = depth_m
+            self.depth_stamp = (ros_depth.header.stamp.sec, ros_depth.header.stamp.nanosec)
     
     # parking processing
     def park_action(self):
@@ -254,82 +287,164 @@ class SelfDrivingNode(Node):
 
                 twist = Twist()
 
-                # if detecting the zebra crossing, start to slow down
-                self.get_logger().info('\033[1;33m%s\033[0m' % self.crosswalk_distance)
-                if 70 < self.crosswalk_distance and not self.start_slow_down:  # The robot starts to slow down only when it is close enough to the zebra crossing
-                    self.count_crosswalk += 1
-                    if self.count_crosswalk == 3:  # judge multiple times to prevent false detection
-                        self.count_crosswalk = 0
-                        self.start_slow_down = True  # sign for slowing down
-                        self.count_slow_down = time.time()  # fixing time for slowing down
-                else:  # need to detect continuously, otherwise reset
-                    self.count_crosswalk = 0
+                # 1) 앞에 벽이 있을 때 우회전
+                wall_turning = False
+                with self.lock:
+                    depth_m = None if self.depth_image is None else self.depth_image.copy()
 
-                # deceleration processing
-                if self.start_slow_down:
-                    if self.traffic_signs_status is not None:
-                        area = abs(self.traffic_signs_status.box[0] - self.traffic_signs_status.box[2]) * abs(self.traffic_signs_status.box[1] - self.traffic_signs_status.box[3])
-                        if self.traffic_signs_status.class_name == 'red' and area < 1000:  # If the robot detects a red traffic light, it will stop
-                            self.mecanum_pub.publish(Twist())
-                            self.stop = True
-                        elif self.traffic_signs_status.class_name == 'green':  # If the traffic light is green, the robot will slow down and pass through
-                            twist.linear.x = self.slow_down_speed
-                            self.stop = False
-                    if not self.stop:  # In other cases where the robot is not stopped, slow down the speed and calculate the time needed to pass through the crosswalk. The time needed is equal to the length of the crosswalk divided by the driving speed
-                        twist.linear.x = self.slow_down_speed
-                        if time.time() - self.count_slow_down > self.crosswalk_length / twist.linear.x:
-                            self.start_slow_down = False
+                if depth_m is not None:
+                    y0, y1 = int(0.20*h), int(0.40*h)
+                    x0, x1 = int(0.40*w), int(0.80*w)
+                    roi = depth_m[y0:y1, x0:x1]
+
+                    valid = np.isfinite(roi) & (roi > 0.05)
+                    if valid.any():
+                        d_min = np.percentile(roi[valid], 10)
+
+                        # EMA
+                        alpha = 0.4
+                        d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
+                        self.dmin_ema = d_est
+
+                        NEAR, FAR = 0.10, 0.30
+                        if d_est < FAR:
+                            strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
+                            strength = float(np.clip(strength, 0.0, 1.0))
+                        else:
+                            strength = 0.0
+
+                        now = time.time()
+                        if strength > 0.05:
+                            self.avoid_until = max(self.avoid_until, now + 0.35)
+
+                        # === 회피 여부 결정 ===
+                        if (strength > 0.0) or (now < self.avoid_until):
+                            wall_turning = True
+
+                            # 회피 강도 s 계산 (가까울수록 ↑). 유지 구간에서는 마지막 s를 서서히 감쇠.
+                            if strength > 0.0:
+                                s = strength ** 1.5
+                                self.last_avoid_s = s
+                            else:
+                                # 유지 타임 동안은 이전 강도를 서서히 줄이며(감쇠) 자연 복귀
+                                self.last_avoid_s *= 0.7
+                                s = max(self.last_avoid_s, 0.15)   # 최소한의 회피 유지(필요시 0.10~0.20 튜닝)
+
+                            # === 가변 조향 ===
+                            twist.angular.z = -0.2 - 0.6 * s      # -0.2 ~ -0.8 근처
+
+                            # === 가변 선속도 ===
+                            v_min = self.min_wall_speed           # 예: 0.05
+                            v_max = self.normal_speed             # 예: 0.20
+                            twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
+
+                            self.mecanum_pub.publish(twist)
+                
+                    if (not wall_turning) and (time.time() < self.avoid_until):
+                        wall_turning = True
+                        # 유지 구간 감쇠
+                        self.last_avoid_s *= 0.7
+                        s = max(self.last_avoid_s, 0.15)
+
+                        twist = Twist()
+                        twist.angular.z = -0.2 - 0.6 * s
+                        v_min = self.min_wall_speed
+                        v_max = self.normal_speed
+                        twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
+                        self.mecanum_pub.publish(twist) 
+
+                if wall_turning:
+                    pass
                 else:
-                    twist.linear.x = self.normal_speed  # go straight with normal speed
+                    # pid 차선 유지 로직이 이 안에 들어감.
+                    # 즉, 회피 기동 중일 때는 차선 유지 로직이 아예 실행조차 안 됨.
+                                        
+                # # if detecting the zebra crossing, start to slow down
+                # self.get_logger().info('\033[1;33m%s\033[0m' % self.crosswalk_distance)
+                # if 70 < self.crosswalk_distance and not self.start_slow_down:  # The robot starts to slow down only when it is close enough to the zebra crossing
+                #     # 
+                #     self.count_crosswalk += 1
+                #     if self.count_crosswalk == 3:  # judge multiple times to prevent false detection
+                #         self.count_crosswalk = 0
+                #         self.start_slow_down = True  # sign for slowing down
+                #         self.count_slow_down = time.time()  # fixing time for slowing down
+                # else:  # need to detect continuously, otherwise reset
+                #     self.count_crosswalk = 0
 
-                # If the robot detects a stop sign and a crosswalk, it will slow down to ensure stable recognition
-                if 0 < self.park_x and 135 < self.crosswalk_distance:
-                    twist.linear.x = self.slow_down_speed
-                    if not self.start_park and 180 < self.crosswalk_distance:  # When the robot is close enough to the crosswalk, it will start parking
-                        self.count_park += 1  
-                        if self.count_park >= 15:  
-                            self.mecanum_pub.publish(Twist())  
-                            self.start_park = True
-                            self.stop = True
-                            threading.Thread(target=self.park_action).start()
-                    else:
-                        self.count_park = 0  
+                # # deceleration processing
+                # if self.start_slow_down:
+                #     if self.traffic_signs_status is not None:
+                #         area = abs(self.traffic_signs_status.box[0] - self.traffic_signs_status.box[2]) * abs(self.traffic_signs_status.box[1] - self.traffic_signs_status.box[3])
+                #         if self.traffic_signs_status.class_name == 'red' and area < 1000:  # If the robot detects a red traffic light, it will stop
+                #             self.mecanum_pub.publish(Twist())
+                #             self.stop = True
+                #         elif self.traffic_signs_status.class_name == 'green':  # If the traffic light is green, the robot will slow down and pass through
+                #             twist.linear.x = self.slow_down_speed
+                #             self.stop = False
+                #     if not self.stop:  # In other cases where the robot is not stopped, slow down the speed and calculate the time needed to pass through the crosswalk. The time needed is equal to the length of the crosswalk divided by the driving speed
+                #         twist.linear.x = self.slow_down_speed
+                #         if time.time() - self.count_slow_down > self.crosswalk_length / twist.linear.x:
+                #             self.start_slow_down = False
+                # else:
+                #     twist.linear.x = self.normal_speed  # go straight with normal speed
+
+                # # If the robot detects a stop sign and a crosswalk, it will slow down to ensure stable recognition
+                # if 0 < self.park_x and 135 < self.crosswalk_distance:
+                #     twist.linear.x = self.slow_down_speed
+                #     if not self.start_park and 180 < self.crosswalk_distance:  # When the robot is close enough to the crosswalk, it will start parking
+                #         self.count_park += 1  
+                #         if self.count_park >= 15:  
+                #             self.mecanum_pub.publish(Twist())  
+                #             self.start_park = True
+                #             self.stop = True
+                #             threading.Thread(target=self.park_action).start()
+                #     else:
+                #         self.count_park = 0  
 
                 # line following processing
-                result_image, status, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
-                x_setpoint = int(w * 0.35) # 화면 중앙에서 살짝 왼쪽.
-                angle_setpoint = 60
+                    result_image, status, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
+                    x_setpoint = int(w * 0.35) # 화면 중앙에서 살짝 왼쪽.
+                    angle_setpoint = 60
 
-                if status == "GO_STRAIGHT":
-                    pos_error = lane_x - x_setpoint
-                    angle_error = lane_angle - angle_setpoint
-                    total_error = 0.7*pos_error + 0.3*angle_error
+                    if status == "GO_STRAIGHT":
+                        pos_error = lane_x - x_setpoint
+                        angle_error = lane_angle - angle_setpoint
+                        total_error = 0.7*pos_error + 0.3*angle_error
 
-                    self.pid.SetPoint = 0
-                    self.pid.update(total_error)
-                    twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
-                    self.get_logger().info(f"pos_error={pos_error:.2f}, angle_error={angle_error:.2f}, total={total_error:.2f}")
-                    self.mecanum_pub.publish(twist)
-
-                elif status == "STOP_LINE":
-                    now = time.time()
-                    if now - self.last_stop_time > self.stop_cooldown:
-                        twist.linear.x = 0.0
-                        twist.angular.z = 0.0
-                        self.last_stop_time = now
+                        self.pid.SetPoint = 0
+                        self.pid.update(total_error)
                         twist.linear.x = self.normal_speed
+                        twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
+                        self.get_logger().info(f"pos_error={pos_error:.2f}, angle_error={angle_error:.2f}, total={total_error:.2f}")
                         self.mecanum_pub.publish(twist)
-                        status = "GO_STRAIGHT"
+
+                    elif status == "STOP_LINE":
+                        now = time.time()
+
+                        # 이미 정지 유지 중이면 계속 0속도 퍼블리시
+                        if now < self.stop_until:
+                            self.mecanum_pub.publish(Twist())
+                            continue  # 또는 return
+
+                        # 새로 정지를 시작할 조건(쿨다운 경과)이라면: 정지 타이머 설정
+                        if now - self.last_stop_time > self.stop_cooldown:
+                            self.last_stop_time = now
+                            self.stop_until = now + self.stop_duration
+                            self.mecanum_pub.publish(Twist())  # 정지 시작
+                            continue  # 또는 return
+
+                        # 그 외엔(오검출/쿨다운 미경과) 저속 크리핑 등 원하는 기본 동작
+                        twist.linear.x = self.normal_speed
+                        twist.angular.z = 0.0
+                        self.mecanum_pub.publish(twist)
+                    
+                    elif status is None:
+                        twist.linear.x = self.slow_down_speed
+                        twist.angular.z = 0.0
+                        self.mecanum_pub.publish(twist)
+                    
                     else:
-                        status = "GO_STRAIGHT"
-                
-                elif status is None:
-                    twist.linear.x = self.slow_down_speed
-                    twist.angular.z = 0.0
-                    self.mecanum_pub.publish(twist)
-                
-                else:
-                    self.pid.clear()
+                        self.pid.clear()
 
 
                 # if lane_x >= 0 and not self.stop:  
@@ -368,7 +483,7 @@ class SelfDrivingNode(Node):
                         class_name = i.class_name
                         cls_conf = i.score
                         cls_id = self.classes.index(class_name)
-                        color = colors(cls_id, True)
+                        color = self.colors(cls_id, True)
                         plot_one_box(
                             box,
                             result_image,
@@ -380,7 +495,7 @@ class SelfDrivingNode(Node):
                 time.sleep(0.01)
 
             
-            bgr_image = cv2.cvtColor(result_image, cv2.COLOR_RGB2BGR)
+            bgr_image = result_image
             if self.display:
                 self.fps.update()
                 bgr_image = self.fps.show_fps(bgr_image)
@@ -402,17 +517,17 @@ class SelfDrivingNode(Node):
         self.objects_info = msg.objects
         if self.objects_info == []:  # If it is not recognized, reset the variable
             self.traffic_signs_status = None
-            self.crosswalk_distance = 0
+            # self.crosswalk_distance = 0
         else:
-            min_distance = 0
+            # min_distance = 0
             for i in self.objects_info:
                 class_name = i.class_name
                 center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
                 
-                if class_name == 'crosswalk':  
-                    if center[1] > min_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
-                        min_distance = center[1]
-                elif class_name == 'right':  # obtain the right turning sign
+                # if class_name == 'crosswalk':  
+                #     if center[1] > min_distance:  # Obtain recent y-axis pixel coordinate of the crosswalk
+                #         min_distance = center[1]
+                if class_name == 'right':  # obtain the right turning sign
                     self.count_right += 1
                     self.count_right_miss = 0
                     if self.count_right >= 5:  # If it is detected multiple times, take the right turning sign to true
@@ -425,7 +540,7 @@ class SelfDrivingNode(Node):
                
 
             self.get_logger().info('\033[1;32m%s\033[0m' % class_name)
-            self.crosswalk_distance = min_distance
+            # self.crosswalk_distance = min_distance
 
 def main():
     node = SelfDrivingNode('self_driving')
