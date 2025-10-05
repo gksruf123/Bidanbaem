@@ -217,7 +217,7 @@ class YoloV5Ros2(Node):
         # self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
         rgb_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image')
         depth_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw')
-        ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=5, slop=0.05)
+        ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=1, slop=0.05)
         ts.registerCallback(self.image_callback)
 
         # Bridge & flags

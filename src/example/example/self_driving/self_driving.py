@@ -385,7 +385,7 @@ class SelfDrivingNode(Node):
                                 self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
                             else:
                                 self.start_dist = self.fence_distance
-                                self.mul = -0.5
+                                self.mul = 2.0
                                 self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
 
                             self.start_count += 1
@@ -482,7 +482,7 @@ class SelfDrivingNode(Node):
     # Obtain the target detection result
     def get_object_callback(self, msg):
         self.objects_info = msg.objects
-        if self.object_callback_cnt == 0:
+        if self.object_callback_cnt < 3:
             self.object_callback_cnt += 1
         else:
             self.object_callback_cnt = 0
