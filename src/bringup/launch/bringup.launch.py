@@ -44,10 +44,10 @@ def launch_setup(context):
     #     output='screen',
     # )
 
-    start_app_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(app_package_path, 'launch/start_app.launch.py')),
-    )
+    # start_app_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         os.path.join(app_package_path, 'launch/start_app.launch.py')),
+    # )
 
     init_pose_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(controller_package_path, 'launch/init_pose.launch.py')),
@@ -67,21 +67,21 @@ def launch_setup(context):
         executable='startup_check',
         output='screen',
     )
-    # Add laser odometry node
-    laser_odometry_node = Node(
-        package='rf2o_laser_odometry',
-        executable='rf2o_laser_odometry_node',
-        name='rf2o_laser_odometry',
-        output='screen',
-        parameters=[{
-            'laser_scan_topic': '/scan_raw',  # Make sure this matches your LiDAR topic
-            'odom_topic': '/odom_rf2o',
-            'publish_tf': False,
-            'base_frame_id': 'base_footprint',
-            'odom_frame_id': 'odom',
-            'init_pose_from_topic': '',
-            'freq': 10.0}],
-    )
+    # # Add laser odometry node
+    # laser_odometry_node = Node(
+    #     package='rf2o_laser_odometry',
+    #     executable='rf2o_laser_odometry_node',
+    #     name='rf2o_laser_odometry',
+    #     output='screen',
+    #     parameters=[{
+    #         'laser_scan_topic': '/scan_raw',  # Make sure this matches your LiDAR topic
+    #         'odom_topic': '/odom_rf2o',
+    #         'publish_tf': False,
+    #         'base_frame_id': 'base_footprint',
+    #         'odom_frame_id': 'odom',
+    #         'init_pose_from_topic': '',
+    #         'freq': 10.0}],
+    # )
 
     return [
             startup_check_node,
@@ -90,10 +90,10 @@ def launch_setup(context):
             lidar_launch,
             # rosbridge_websocket_launch,
             # web_video_server_node,
-            start_app_launch,
+            # start_app_launch,
             joystick_control_launch,
             init_pose_launch,
-            laser_odometry_node,
+            # laser_odometry_node,
             ]
 
 def generate_launch_description():
