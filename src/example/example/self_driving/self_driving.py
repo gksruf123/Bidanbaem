@@ -485,6 +485,15 @@ class SelfDrivingNode(Node):
     def get_object_callback(self, msg):
         self.objects_info = msg.objects
         if self.detect:
+            self.traffic_signs_status = None
+            self.cw_distance = -1
+            self.right_distance = -1
+            self.sign_distance = -1
+
+            self.detected_cw = False
+            self.detected_go = False
+            self.detected_right = False
+            self.detected_park = False
             if self.objects_info == []:  # If it is not recognized, reset the variable
                 self.traffic_signs_status = None
                 self.cw_distance = -1
