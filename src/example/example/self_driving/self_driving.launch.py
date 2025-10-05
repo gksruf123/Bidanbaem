@@ -61,7 +61,7 @@ def launch_setup(context):
     )
 
     smooth_cmd_vel_node = Node(
-        package='example',
+        package='smooth_cmd_vel',
         executable='smooth_cmd_vel',
         output='screen',
     )
