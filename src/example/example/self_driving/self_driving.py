@@ -27,6 +27,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from ros_robot_controller_msgs.msg import BuzzerState, SetPWMServoState, PWMServoState
 
+
 class SelfDrivingNode(Node):
     def __init__(self, name):
         rclpy.init()
@@ -64,6 +65,7 @@ class SelfDrivingNode(Node):
 
         self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
 
+
     def init_process(self):
         self.timer.cancel()
         self.mecanum_pub.publish(Twist())
@@ -81,6 +83,7 @@ class SelfDrivingNode(Node):
         threading.Thread(target=self.main, daemon=True).start()
         self.create_service(Trigger, '~/init_finish', self.get_node_state)
         self.get_logger().info('\033[1;32m%s\033[0m' % 'start')
+
 
     def park_action(self):
         if self.machine_type == 'MentorPi_Mecanum':
@@ -149,7 +152,6 @@ class SelfDrivingNode(Node):
 
         self.count_crosswalk = 0
         self.crosswalk_distance = 0
-        self.crosswalk_length = 0.4
 
         self.start_slow_down = False
         self.normal_speed = 0.1
@@ -162,35 +164,35 @@ class SelfDrivingNode(Node):
         self.image_sub = None
         self.objects_info = []
 
-        # 🔽 신호등 출발 대기
+        # 🔽 신호등 출발 대기 (첫 번째)
         self.await_green_start = True   # 처음엔 green 신호 대기
         self.green_stable_frames = 0
         self.GREEN_REQUIRED = 5
 
-        # 🔽 횡단보도 정차 (쿨다운 포함)
-        self.crosswalk_stop_pending = False
-        self.crosswalk_stop_active = False
-        self.crosswalk_last_stop_time = 0.0   # 마지막 멈춘 시각
-        self.CROSSWALK_STOP_SEC = 3.0         # 정차 시간
-        self.CROSSWALK_IGNORE_SEC = 5.0       # 정차 후 무시 시간
+        # 🔽 두 번째 신호등 이후 제어용
+        self.traffic_light_count = 0      # 신호등 감지 횟수
+        self.await_next_signal = False    # 두 번째 신호등부터는 True
+        self.signal_wait_mode = False     # 신호 대기 모드
 
         # 주차 관련
         self.park_x = -1
-        self.start_park = False      # 주차 시작 여부
-        self.park_detected = False   # park 표지판을 봤는지
-        self.park_detect_time = 0.0  # park 감지 시각
-        self.PARK_DELAY = 2.0        # park 감지 후 몇 초 뒤에 주차 시작할지
+        self.start_park = False
+        self.park_detected = False
+        self.park_detect_time = 0.0
+        self.PARK_DELAY = 2.0
 
 
     def get_node_state(self, request, response):
         response.success = True
         return response
 
+
     def send_request(self, client, msg):
         future = client.call_async(msg)
         while rclpy.ok():
             if future.done() and future.result():
                 return future.result()
+
 
     def enter_srv_callback(self, request, response):
         self.get_logger().info("self driving enter")
@@ -212,6 +214,7 @@ class SelfDrivingNode(Node):
         response.message = "enter"
         return response
 
+
     def exit_srv_callback(self, request, response):
         self.get_logger().info("self driving exit")
         with self.lock:
@@ -228,6 +231,7 @@ class SelfDrivingNode(Node):
         response.message = "exit"
         return response
 
+
     def set_running_srv_callback(self, request, response):
         self.get_logger().info("set_running")
         with self.lock:
@@ -238,8 +242,10 @@ class SelfDrivingNode(Node):
         response.message = "set_running"
         return response
 
+
     def shutdown(self, signum, frame):
         self.is_running = False
+
 
     def image_callback(self, ros_image):
         cv_image = self.bridge.imgmsg_to_cv2(ros_image, "rgb8")
@@ -247,6 +253,7 @@ class SelfDrivingNode(Node):
         if self.image_queue.full():
             self.image_queue.get()
         self.image_queue.put(rgb_image)
+
 
     def main(self):
         while self.is_running:
@@ -263,7 +270,7 @@ class SelfDrivingNode(Node):
                 binary_image = self.lane_detect.get_binary(image)
                 twist = Twist()
 
-                # 1) 출발 전 green 신호 대기
+                # 1) 첫 번째 신호등: 초록불 대기 후 출발
                 if self.await_green_start:
                     if (self.traffic_signs_status and 
                         self.traffic_signs_status.class_name == "green"):
@@ -278,26 +285,21 @@ class SelfDrivingNode(Node):
                     self.mecanum_pub.publish(Twist())
                     continue
 
-                # 2) 횡단보도 정차 + 쿨다운
-                if self.crosswalk_stop_pending and not self.crosswalk_stop_active:
-                    now = time.time()
-                    if now - self.crosswalk_last_stop_time > self.CROSSWALK_IGNORE_SEC:
-                        self.crosswalk_stop_active = True
-                        self.crosswalk_stop_pending = False
-                        self.crosswalk_last_stop_time = now
-                        self.mecanum_pub.publish(Twist())
-                        self.get_logger().info("[CROSSWALK] Stop")
-                    else:
-                        self.crosswalk_stop_pending = False
-                        self.get_logger().info("[CROSSWALK] Ignored (cooldown)")
-                        
-                if self.crosswalk_stop_active:
-                    if time.time() - self.crosswalk_last_stop_time < self.CROSSWALK_STOP_SEC:
-                        self.mecanum_pub.publish(Twist())
-                        continue
-                    else:
-                        self.crosswalk_stop_active = False
-                        self.get_logger().info("[CROSSWALK] Resume driving")
+                # 2) 두 번째 신호등 이후: 신호등 감지 시 정지 + 신호 대기
+                if self.await_next_signal:
+                    if self.signal_wait_mode:
+                        if (self.traffic_signs_status and 
+                            self.traffic_signs_status.class_name == "red"):
+                            self.mecanum_pub.publish(Twist())
+                            self.get_logger().info("[SIGNAL] Red light detected → 정지 유지")
+                            continue
+                        elif (self.traffic_signs_status and 
+                              self.traffic_signs_status.class_name == "green"):
+                            self.signal_wait_mode = False
+                            self.get_logger().info("[SIGNAL] Green light detected → 출발 재개")
+                        else:
+                            self.mecanum_pub.publish(Twist())
+                            continue
 
                 # 3) 라인트레이싱
                 try:
@@ -325,7 +327,7 @@ class SelfDrivingNode(Node):
                     if abs(offset) > 40:
                         twist.linear.x = 0.3   # 코너 감속
                     else:
-                        twist.linear.x = 0.8   # 직선 가속
+                        twist.linear.x = 0.5   # 직선 가속
                     self.mecanum_pub.publish(twist)
                 else:
                     self.pid.clear()
@@ -336,13 +338,10 @@ class SelfDrivingNode(Node):
                     if time.time() - self.park_detect_time > self.PARK_DELAY:
                         self.start_park = True
                         self.get_logger().info("[PARK] Parking action start")
-
-                        self.mecanum_pub.publish(Twist())  # 잠시 정지
+                        self.mecanum_pub.publish(Twist())
                         time.sleep(0.5)
-
                         self.park_action()
                         self.get_logger().info("[PARK] Parking completed")
-
                         self.is_running = False
                         self.mecanum_pub.publish(Twist())
                         continue
@@ -368,37 +367,29 @@ class SelfDrivingNode(Node):
         self.objects_info = msg.objects
         if self.objects_info == []:
             self.traffic_signs_status = None
-            self.crosswalk_distance = 0
-        else:
-            min_distance = 0
-            for i in self.objects_info:
-                class_name = i.class_name
-                center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
+            return
 
-                if class_name == 'crosswalk':
-                    self.crosswalk_stop_pending = True  # 감지 시 멈춤 후보
-                    if center[1] > min_distance:
-                        min_distance = center[1]
+        for i in self.objects_info:
+            class_name = i.class_name
 
-                elif class_name == 'right':
-                    self.count_right += 1
-                    self.count_right_miss = 0
-                    if self.count_right >= 5:
-                        self.turn_right = True
-                        self.count_right = 0
+            # 🚦 신호등 감지 카운트
+            if class_name in ['red', 'green']:
+                if not self.await_green_start:
+                    self.traffic_light_count += 1
+                    self.get_logger().info(f"[SIGNAL] Traffic light #{self.traffic_light_count} detected: {class_name}")
 
-                elif class_name == 'park':
-                    self.park_x = center[0]
-                    if not self.park_detected:
-                        self.park_detected = True
-                        self.park_detect_time = time.time()
-                        self.get_logger().info("[PARK] Park sign detected, preparing to park...")
+                    if self.traffic_light_count >= 2:
+                        self.await_next_signal = True
+                        self.signal_wait_mode = True
 
-                elif class_name in ['red', 'green']:
-                    self.traffic_signs_status = i
+                self.traffic_signs_status = i
 
-            self.get_logger().info(class_name)
-            self.crosswalk_distance = min_distance
+            elif class_name == 'park':
+                if not self.park_detected:
+                    self.park_detected = True
+                    self.park_detect_time = time.time()
+                    self.get_logger().info("[PARK] Park sign detected, preparing to park...")
+
 
 def main():
     node = SelfDrivingNode('self_driving')
