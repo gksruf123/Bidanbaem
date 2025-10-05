@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'smooth_cmd_vel = smooth_cmd_vel.smooth_cmd_vel.smooth_cmd_vel:main',
+            'smooth_cmd_vel = smooth_cmd_vel.smooth_cmd_vel:main',
         ],
     },
 )
