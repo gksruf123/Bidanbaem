@@ -275,7 +275,6 @@ class YoloV5Ros2(Node):
         for index in range(len(categories)):
             cid = int(categories[index])
             name = detect_result.names[cid] if cid < len(detect_result.names) else f"cls_{cid}"
-            self.get_logger().info(f"\033[1;31m**{name}**\033[0m")
 
             det = Detection2D()
             det.id = name
@@ -332,8 +331,6 @@ class YoloV5Ros2(Node):
 
         if len(categories) > 0:
             self.yolo_result_pub.publish(self.result_msg)
-
-        self.get_logger().info(f"\033[1;32m********************************\033[0m")
 def main():
     rclpy.init()
     rclpy.spin(YoloV5Ros2())
