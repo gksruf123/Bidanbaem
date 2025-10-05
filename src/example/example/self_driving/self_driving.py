@@ -56,16 +56,21 @@ class SelfDrivingNode(Node):
         # self.heart = Heart(self.name + '/heartbeat', 5, lambda _: self.exit_srv_callback(None))
         timer_cb_group = ReentrantCallbackGroup()
         self.client = self.create_client(Trigger, '/yolov5_ros2/init_finish')
-        self.client.wait_for_service()
+        if not self.client.wait_for_service(timeout_sec=3.0):
+            self.get_logger().warn("YOLO init_finish service not found. skipping YOLO.")
         self.start_yolov5_client = self.create_client(Trigger, '/yolov5/start', callback_group=timer_cb_group)
-        self.start_yolov5_client.wait_for_service()
+        if not self.start_yolov5_client.wait_for_service(timeout_sec=3.0):
+            self.get_logger().warn("YOLO start service not found. skipping YOLO.")
         self.stop_yolov5_client = self.create_client(Trigger, '/yolov5/stop', callback_group=timer_cb_group)
-        self.stop_yolov5_client.wait_for_service()
+        if not self.stop_yolov5_client.wait_for_service(timeout_sec=3.0):
+            self.get_logger().warn("YOLO stop service not found. skipping YOLO.")
 
-        self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
+        self.timer = self.create_timer(0.1, self.init_process, callback_group=timer_cb_group)
 
     def init_process(self):
         self.timer.cancel()
+        self.get_logger().info('\033[1;32m%s\033[0m' % 'start')
+
 
         self.mecanum_pub.publish(Twist())
         if not self.get_parameter('only_line_follow').value:
@@ -78,11 +83,14 @@ class SelfDrivingNode(Node):
             request = SetBool.Request()
             request.data = True
             self.set_running_srv_callback(request, SetBool.Response())
+            self.start = True 
 
         #self.park_action() 
         threading.Thread(target=self.main, daemon=True).start()
         self.create_service(Trigger, '~/init_finish', self.get_node_state)
-        self.get_logger().info('\033[1;32m%s\033[0m' % 'start')
+        if self.objects_info:
+            self.get_logger().info(f"[INFO] Objects detected: {[i.class_name for i in self.objects_info]}")
+
 
     def param_init(self):
         self.start = False
@@ -136,14 +144,29 @@ class SelfDrivingNode(Node):
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving enter")
         with self.lock:
             self.start = False
-            camera = 'depth_cam'#self.get_parameter('depth_camera_name').value
-            self.create_subscription(Image, '/ascamera/camera_publisher/rgb0/image' , self.image_callback, 1)
-            self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.get_object_callback, 1)
+            camera = 'depth_cam'  # self.get_parameter('depth_camera_name').value
+
+            # ✅ 구독 객체를 변수로 저장해야 콜백이 살아있습니다
+            self.image_sub = self.create_subscription(
+                Image,
+                '/ascamera/camera_publisher/rgb0/image',
+                self.image_callback,
+                1
+            )
+            self.object_sub = self.create_subscription(
+                ObjectsInfo,
+                '/yolov5_ros2/object_detect',
+                self.get_object_callback,
+                1
+            )
+
             self.mecanum_pub.publish(Twist())
             self.enter = True
+
         response.success = True
         response.message = "enter"
         return response
+
 
     def exit_srv_callback(self, request, response):
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving exit")
