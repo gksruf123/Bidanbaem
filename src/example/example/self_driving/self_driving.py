@@ -493,7 +493,7 @@ class SelfDrivingNode(Node):
             self.detected_park = False
         else:
             self.cw_distance = 10000
-            class_set = {}
+            class_set = set()
             for i in self.objects_info:
                 class_name = i.class_name
                 center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
