@@ -326,7 +326,7 @@ class SelfDrivingNode(Node):
 
                 if self.is_start: # 맨 처음 'green' 감지
                     # line following processing
-                    result_image, left_lane_x, right_lane_x, mid_lane_x, turn_right = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
+                    result_image, left_lane_x, turn_right = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
                     # self.get_logger().info(f"\033[1;32m\nleft_lane_x: {left_lane_x}\tright_lane_x: {right_lane_x}\tmid_lane_x: {mid_lane_x}\033[0m")
 
                     if self.go_finish and self.turn_finish:
@@ -403,12 +403,8 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(Twist())
                             continue
                         if left_lane_x >= 0 and not self.stop:
-                            if mid_lane_x == -1:
-                                self.pid.SetPoint = 180  # the coordinate of the line while the robot is in the middle of the lane
-                                self.pid.update(left_lane_x)
-                            else:
-                                self.pid.SetPoint = 230  # the coordinate of the line while the robot is in the middle of the lane
-                                self.pid.update(mid_lane_x)
+                            self.pid.SetPoint = 180  # the coordinate of the line while the robot is in the middle of the lane
+                            self.pid.update(left_lane_x)
                             if self.machine_type != 'MentorPi_Acker':
                                 twist.angular.z = common.set_range(self.pid.output, -0.15, 0.15)
                             else:
@@ -422,7 +418,7 @@ class SelfDrivingNode(Node):
                             self.turn_count += 1
                             self.basis_turn_point = self.degree      # 현재 기준 시작 각도 지정
 
-                        if abs(self.basis_turn_point - self.degree) > 83:
+                        if abs(self.basis_turn_point - self.degree) > 80:
                             self.turn_finish = True
                             # self.detected_cw = False
                             # self.detected_go = False

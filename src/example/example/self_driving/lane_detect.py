@@ -38,7 +38,7 @@ class LaneDetector(object):
                 (292, 315, 320, 640, 0.2),
                 (248, 270, 320, 640, 0.1)
             )
-            self.turn_rois = ((200, 480, 250, 390, 0.0),)
+            self.turn_rois = ((200, 480, 300, 320, 0.0),)
         else:
             self.left_lane_rois = ((450, 480, 0, 320, 0.7), (390, 480, 0, 320, 0.2), (330, 480, 0, 320, 0.1))
 
@@ -194,67 +194,10 @@ class LaneDetector(object):
         turn_right = False
         self.get_center_x(image, result_image, self.left_lane_rois, left_lane_center_x)
         left_max_center_x = self.get_max_lane_x(len(left_lane_center_x), left_lane_center_x)
-        self.get_center_x(image, result_image, self.right_lane_rois, right_lane_center_x)
-        right_min_center_x = self.get_min_lane_x(len(right_lane_center_x), right_lane_center_x)
         self.get_center_x(image, result_image, self.turn_rois, center_lane_center_x)
         turn_right = center_lane_center_x[0] != -1
-        # for roi in self.left_lane_rois:
-        #     blob = image[roi[0]:roi[1], roi[2]:roi[3]]  # crop ROI
-        #     contours = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]  # find contours
-        #     max_contour_area = self.get_area_max_contour(contours, 30)  # obtain the contour with the largest area
-        #     if max_contour_area is not None:
-        #         rect = cv2.minAreaRect(max_contour_area[0])  # the minimum bounding rectangle
-        #         box = np.intp(cv2.boxPoints(rect))  # four corners
-        #         for j in range(4):
-        #             box[j, 1] = box[j, 1] + roi[0]
-        #         cv2.drawContours(result_image, [box], -1, (255, 255, 0), 2)  # draw the rectangle composed of the four points
-
-        #         # obtain the diagonal points of the rectangle
-        #         pt1_x, pt1_y = box[0, 0], box[0, 1]
-        #         pt3_x, pt3_y = box[2, 0], box[2, 1]
-        #         # the center point of the line
-        #         line_center_x, line_center_y = (pt1_x + pt3_x) / 2, (pt1_y + pt3_y) / 2
-
-        #         cv2.circle(result_image, (int(line_center_x), int(line_center_y)), 5, (0, 0, 255), -1)  # draw the center point
-        #         left_lane_center_x.append(line_center_x)
-        #     else:
-        #         left_lane_center_x.append(-1)
-        # for roi in self.right_lane_rois:
-        #     blob = image[roi[0]:roi[1], roi[2]:roi[3]]  # crop ROI
-        #     contours = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]  # find contours
-        #     max_contour_area = self.get_area_max_contour(contours, 30)  # obtain the contour with the largest area
-        #     if max_contour_area is not None:
-        #         rect = cv2.minAreaRect(max_contour_area[0])  # the minimum bounding rectangle
-        #         box = np.intp(cv2.boxPoints(rect))  # four corners
-        #         for j in range(4):
-        #             box[j, 1] = box[j, 1] + roi[0]
-        #         cv2.drawContours(result_image, [box], -1, (255, 255, 0), 2)  # draw the rectangle composed of the four points
-
-        #         # obtain the diagonal points of the rectangle
-        #         pt1_x, pt1_y = box[0, 0], box[0, 1]
-        #         pt3_x, pt3_y = box[2, 0], box[2, 1]
-        #         # the center point of the line
-        #         line_center_x, line_center_y = (pt1_x + pt3_x) / 2, (pt1_y + pt3_y) / 2
-
-        #         cv2.circle(result_image, (int(line_center_x), int(line_center_y)), 5, (0, 0, 255), -1)  # draw the center point
-        #         right_lane_center_x.append(line_center_x)
-        #     else:
-        #         right_lane_center_x.append(-1)
-        # for i in range(len(left_lane_center_x)):
-        #     if left_lane_center_x[i] != -1:
-        #         if left_lane_center_x[i] > left_max_center_x:
-        #             left_max_center_x = left_lane_center_x[i]
-        # for i in range(len(right_lane_center_x)):
-        #     if right_lane_center_x[i] != -1:
-        #         if right_lane_center_x[i] > right_min_center_x:
-        #             right_min_center_x = right_lane_center_x[i]
-        if right_min_center_x != -1 and left_max_center_x != -1:
-            line_mid_center_x = (right_min_center_x + left_max_center_x) / 2
-
-        # if left_lane_center_x[-1] == -1:
-        #     turn_right = True
         
-        return result_image, left_max_center_x, right_min_center_x, line_mid_center_x, turn_right
+        return result_image, left_max_center_x, turn_right
 
 image_queue = queue.Queue(2)
 def image_callback(ros_image):
