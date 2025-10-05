@@ -1,6 +1,7 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription, LaunchService
 import os
 
 def generate_launch_description():
@@ -38,3 +39,12 @@ def generate_launch_description():
             condition=None  # optional if you have rviz config
         ),
     ])
+
+if __name__ == '__main__':
+    # 创建一个LaunchDescription对象
+    ld = generate_launch_description()
+
+    ls = LaunchService()
+    ls.include_launch_description(ld)
+    ls.run()
+
