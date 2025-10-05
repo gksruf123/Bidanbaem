@@ -15,6 +15,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
 import yaml
+import time
 #from sdk import common
 
 from yolov5_ros2.cv_tool import px2xy
@@ -160,6 +161,7 @@ class YoloV5Ros2(Node):
         super().__init__('yolov5_ros2')
         self.get_logger().info(f"Current ROS 2 distribution: {ros_distribution}")
         self.fps = fps.FPS()
+        self.time = time.time()
 
         self.declare_parameter("device", "cuda", ParameterDescriptor(
             name="device", description="Compute device selection, default: cpu, options: cuda:0"))
@@ -231,17 +233,28 @@ class YoloV5Ros2(Node):
         return response
 
     def start_srv_callback(self, request, response):
-        self.get_logger().info('\033[1;32m%s\033[0m' % "start yolov5 detect (onnx)")
-        self.start = True
-        response.success = True
-        response.message = "start"
+        # if time.time() - self.time > 0.25:
+        if True:
+            self.time = time.time()
+            self.get_logger().info('\033[1;32m%s\033[0m' % "start yolov5 detect (onnx)")
+            self.start = True
+            response.success = True
+            response.message = "start"
+        # else:
+            # response.success = False
+            # response.message = "fail"
         return response
 
     def stop_srv_callback(self, request, response):
-        self.get_logger().info('\033[1;32m%s\033[0m' % "stop yolov5 detect (onnx)")
-        self.start = False
-        response.success = True
-        response.message = "stop"
+        if time.time() - self.time > 0.25:
+            self.time = time.time()
+            self.get_logger().info('\033[1;32m%s\033[0m' % "stop yolov5 detect (onnx)")
+            self.start = False
+            response.success = True
+            response.message = "stop"
+        else:
+            response.success = False
+            response.message = "fail"
         return response
 
     def image_callback(self, rgb_msg, depth_msg):
