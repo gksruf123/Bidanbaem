@@ -125,6 +125,7 @@ class SelfDrivingNode(Node):
         self.turn_finish = True
         self.go_finish = True
         self.stop_time = time.time()
+        self.wait_can_finish = True
 
         self.object_sub = None
         self.image_sub = None
@@ -133,6 +134,7 @@ class SelfDrivingNode(Node):
         self.start_turn_time_stamp = 0
 
     def call_start(self):
+        self.wait_can_finish = False
         req = Trigger.Request()
         future = self.start_yolov5_client.call_async(req)
         future.add_done_callback(self._on_start_response)
@@ -324,7 +326,7 @@ class SelfDrivingNode(Node):
 
                     if self.go_finish and self.turn_finish:
                         if self.wait:
-                            if time.time() - self.stop_time > 5.0:
+                            if time.time() - self.stop_time > 1.0 and self.wait_can_finish:
                                 if self.traffic_signs_status != 'red':
                                     self.wait = False
                                     self.start = True
@@ -374,16 +376,18 @@ class SelfDrivingNode(Node):
                             self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance > 400}\033[0m")
                             if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
                                 self.start_dist = self.cw_distance
+                                self.mul = 1
                                 self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
                             else:
                                 self.start_dist = self.fence_distance
+                                self.mul = 2
                                 self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
 
                             self.start_count += 1
                             self.basis_start_point_x, self.basis_start_point_y = self.position_x, self.position_y
 
                         self.get_logger().info(f"\033[1;31modom: {max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000}, dist: {self.start_dist}\033[0m")
-                        if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000 > self.start_dist - 100:   # odom(m)과 distance(mm)의 단위를 고려하지 않음
+                        if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000 > self.start_dist - (250 * self.mul):   # odom(m)과 distance(mm)의 단위를 고려하지 않음
                             self.get_logger().info(f"\033[1;31m**go finish**\033[0m")
                             self.go_finish = True
                             # self.detected_cw = False
@@ -489,11 +493,13 @@ class SelfDrivingNode(Node):
             self.detected_park = False
         else:
             self.cw_distance = 10000
+            class_set = {}
             for i in self.objects_info:
                 class_name = i.class_name
                 center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
                 obj_distance = i.distance
                 self.fence_distance = i.fence_distance
+                class_set.add(class_name)
                 
                 if class_name == 'crosswalk':
                     self.detected_cw = True
@@ -515,6 +521,9 @@ class SelfDrivingNode(Node):
                     self.traffic_signs_status = 'green'
                     self.sign_distance = obj_distance
                     self.is_start = True
+
+            if len(class_set) >= 2:
+                self.wait_can_finish = True
                     # self.get_logger().info(f"\033[1;31m**detected {class_name}**\033[0m")
 
                 # if class_name == 'crosswalk':
