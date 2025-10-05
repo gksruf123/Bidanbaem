@@ -387,7 +387,7 @@ class SelfDrivingNode(Node):
                             self.basis_start_point_x, self.basis_start_point_y = self.position_x, self.position_y
 
                         self.get_logger().info(f"\033[1;31modom: {max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000}, dist: {self.start_dist}\033[0m")
-                        if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000 > self.start_dist - (250 * self.mul):   # odom(m)과 distance(mm)의 단위를 고려하지 않음
+                        if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000 > self.start_dist - (200 * self.mul):   # odom(m)과 distance(mm)의 단위를 고려하지 않음
                             self.get_logger().info(f"\033[1;31m**go finish**\033[0m")
                             self.go_finish = True
                             # self.detected_cw = False
@@ -525,8 +525,7 @@ class SelfDrivingNode(Node):
 
             self.get_logger().info(f"\033[1;31m**objects num: {len(self.objects_info)}**\033[0m")
             self.get_logger().info(f"\033[1;31m**class num: {len(class_set)}**\033[0m")
-            if len(class_set) >= 2:
-                self.wait_can_finish = True
+            self.wait_can_finish = True
                     # self.get_logger().info(f"\033[1;31m**detected {class_name}**\033[0m")
 
                 # if class_name == 'crosswalk':
