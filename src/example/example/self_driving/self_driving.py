@@ -66,29 +66,88 @@ class SelfDrivingNode(Node):
         self.stop_yolov5_client.wait_for_service()
 
         self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
-        
+
+        self._yolo_is_on = False
+        self._yolo_last_toggle = 0.0
+        self._yolo_min_interval = 0.5   # 연속 토글 최소 간격(초) - 파이프라인 흔들림 방지
+        self._yolo_timer = None         # enable-for 타이머 핸들
+
+    def yolo_start(self, delay_s: float = 0.0):
+        """YOLO 추론 시작(서비스 호출) - 구독/카메라 연결은 유지됨."""
+        def _do_start():
+            now = time.time()
+            if now - self._yolo_last_toggle < self._yolo_min_interval:
+                return
+            self._yolo_last_toggle = now
+            if not self._yolo_is_on:
+                self.send_request(self.start_yolov5_client, Trigger.Request())
+                self._yolo_is_on = True
+                self.get_logger().info("[self_driving] YOLO: START")
+        if delay_s > 0:
+            threading.Timer(delay_s, _do_start, daemon=True).start()
+        else:
+            _do_start()
+
+    def yolo_stop(self, delay_s: float = 0.0):
+        """YOLO 추론 정지(서비스 호출) - 프레임 파이프라인은 건드리지 않음."""
+        def _do_stop():
+            now = time.time()
+            if now - self._yolo_last_toggle < self._yolo_min_interval:
+                return
+            self._yolo_last_toggle = now
+            if self._yolo_is_on:
+                self.send_request(self.stop_yolov5_client, Trigger.Request())
+                self._yolo_is_on = False
+                self.get_logger().info("[self_driving] YOLO: STOP")
+        if delay_s > 0:
+            threading.Timer(delay_s, _do_stop, daemon=True).start()
+        else:
+            _do_stop()
+
+    def yolo_enable_for(self, seconds: float, start_delay: float = 0.0):
+        """YOLO를 잠깐 켰다가(seconds 후 자동으로 끄기)."""
+        # 이전 예약 끄기 취소
+        if self._yolo_timer is not None:
+            try:
+                self._yolo_timer.cancel()
+            except Exception:
+                pass
+            self._yolo_timer = None
+
+        # 시작(필요시 지연)
+        self.yolo_start(delay_s=start_delay)
+
+        # seconds 후 자동 STOP
+        def _auto_stop():
+            self.yolo_stop()
+            self._yolo_timer = None
+        self._yolo_timer = threading.Timer(seconds + start_delay, _auto_stop)
+        self._yolo_timer.daemon = True
+        self._yolo_timer.start()
+
 
     def init_process(self):
         self.timer.cancel()
 
         self.mecanum_pub.publish(Twist())
         if not self.get_parameter('only_line_follow').value:
-        # 이 부분이랑 __init__의 wait_for_service 3개가 욜로 무한으로 기다리는 로직인 듯?
-        # 근데 예전에 욜로 안 넣었을 땐 어떻게 실행된 거지?
-            self.send_request(self.start_yolov5_client, Trigger.Request())
+            # 기본 전략 선택: (a) 기본 ON → 필요할 때 잠깐 OFF, (b) 기본 OFF → 필요할 때 잠깐 ON
+            # a안 예시:
+            self.yolo_start()     # ← 기존 self.send_request(self.start_yolov5_client, ...) 대체
+            # b안을 원하면: self.yolo_stop()
+
         time.sleep(1)
-        
-        if 1:#self.get_parameter('start').value:
+
+        if 1:
             self.display = True
             self.enter_srv_callback(Trigger.Request(), Trigger.Response())
-            request = SetBool.Request()
-            request.data = True
+            request = SetBool.Request(); request.data = True
             self.set_running_srv_callback(request, SetBool.Response())
 
-        #self.park_action() 
         threading.Thread(target=self.main, daemon=True).start()
         self.create_service(Trigger, '~/init_finish', self.get_node_state)
         self.get_logger().info('\033[1;32m%s\033[0m' % 'start')
+
 
     def param_init(self):
         self.start = False
@@ -271,8 +330,7 @@ class SelfDrivingNode(Node):
         self.mecanum_pub.publish(Twist())
 
     def main(self):
-        # self.send_request(self.stop_yolov5_client, Trigger.Request())
-        # 욜로 수신 중단
+        first_frame_seen = False
 
         while self.is_running:
             time_start = time.time()
@@ -283,6 +341,13 @@ class SelfDrivingNode(Node):
                     break
                 else:
                     continue
+
+            # --- 첫 프레임을 받은 직후 한 번만 안전지연 stop(옵션) ---
+            if not first_frame_seen:
+                first_frame_seen = True
+                # 기본 ON으로 시작했지만 라인팔로우가 주가라면, 프레임 안정 후 YOLO OFF
+                # 필요 없으면 이 줄 지워도 됨
+                self.yolo_stop(delay_s=0.7)  # 0.5~1.0s 사이 튜닝 권장
 
             # 욜로 감지된 지 오래됐으면 기존의 욜로 객체 전부 초기화
             yolo_now = time.time()

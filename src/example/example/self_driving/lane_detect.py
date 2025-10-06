@@ -168,8 +168,8 @@ class LaneDetector(object):
         # 허프 파라미터(안정화용)
         lines_left = cv2.HoughLinesP(
             blob_left, 1, np.pi/180,
-            threshold=35,
-            minLineLength=int(0.3*(roi_left[1]-roi_left[0])),
+            threshold=100,
+            minLineLength=int(0.5*(roi_left[1]-roi_left[0])),
             maxLineGap=8
         )
 
