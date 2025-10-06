@@ -94,6 +94,7 @@ class SelfDrivingNode(Node):
         self.start = False
         self.enter = False
         self.right = True
+        self.crt_time = time.time()
 
         self.have_turn_right = False
         self.detect_turn_right = False
@@ -517,7 +518,8 @@ class SelfDrivingNode(Node):
 
     # Obtain the target detection result
     def get_object_callback(self, msg):
-        crt_time = datetime.time()
+        frame_per_sec = 1 / (time.time() - self.crt_time)
+        self.crt_time = time.time()
 
         self.objects_info = msg.objects
         if self.objects_info == []:  # If it is not recognized, reset the variable
@@ -543,7 +545,7 @@ class SelfDrivingNode(Node):
                 elif class_name == 'red' or class_name == 'green':  # obtain the status of the traffic light
                     self.traffic_signs_status = i
                
-            print(crt_time)
+            self.get_logger().info(f'\033[1;31m{frame_per_sec}\033[0m')
             self.get_logger().info('\033[1;32m%s\033[0m' % class_name)
             # self.crosswalk_distance = min_distance
 
