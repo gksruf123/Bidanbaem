@@ -28,12 +28,30 @@ class LaneDetector(object):
     def __init__(self, color):
         # lane color
         self.target_color = color
+        # (x1,y1,x2,y2) in 320x240 bin coords
+        self.last_line = None 
         # ROI for lane detection
         if os.environ['DEPTH_CAMERA_TYPE'] == 'ascamera':
             self.rois = ((338, 360, 0, 320, 0.7), (292, 315, 0, 320, 0.2), (248, 270, 0, 320, 0.1))
         else:
             self.rois = ((450, 480, 0, 320, 0.7), (390, 480, 0, 320, 0.2), (330, 480, 0, 320, 0.1))
         self.weight_sum = 1.0
+
+        self.prev_x = None
+        self.prev_ang = None
+        self.smooth_x = None
+        self.smooth_ang = None  
+
+        self.y_ratio = 0.75
+
+    # 클래스 메서드로 추가: ROI 로컬 좌표의 선분이 y=y_t에서 가지는 x 위치
+    def _x_at_y(self, x1, y1, x2, y2, y_t):
+        dy = (y2 - y1)
+        dx = (x2 - x1)
+        if abs(dy) < 1e-6:
+            return 0.5*(x1 + x2)
+        # x = x1 + (y_t - y1) * dx/dy
+        return x1 + (y_t - y1) * (dx / (dy + 1e-6))
 
     def set_roi(self, roi):
         self.rois = roi
@@ -129,106 +147,134 @@ class LaneDetector(object):
         return up_point, down_point, y_center
 
     def get_binary(self, image):
-        # recognize color through LAB space
         resized = cv2.resize(image, (320, 240))
-        img_lab = cv2.cvtColor(resized, cv2.COLOR_BGR2LAB)  # convert RGB to LAB
-        img_blur = cv2.GaussianBlur(img_lab, (5, 5), 3)  # Gaussian blur denoising
-        mask = cv2.inRange(img_blur, tuple(lab_data['lab']['Stereo'][self.target_color]['min']), tuple(lab_data['lab']['Stereo'][self.target_color]['max']))  # 二值化
-        eroded = cv2.erode(mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # erode
-        dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11)))  # dilate
+        img_lab = cv2.cvtColor(resized, cv2.COLOR_BGR2LAB)
+        img_blur = cv2.GaussianBlur(img_lab, (5, 5), 3)
+        mask = cv2.inRange(
+            img_blur,
+            tuple(lab_data['lab']['Stereo'][self.target_color]['min']),
+            tuple(lab_data['lab']['Stereo'][self.target_color]['max'])
+        )
+        eroded  = cv2.erode(mask,  cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+        dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11)))
+
+        h, w = dilated.shape[:2]
+        out = dilated.copy()
+
+        # 3사분면 ROI (로컬 좌표계)
+        roi_left = (h//2, h, 0, w//2)  # (y0:y1, x0:x1)
+        blob_left = dilated[roi_left[0]:roi_left[1], roi_left[2]:roi_left[3]]
+
+        # 허프 파라미터(안정화용)
+        lines_left = cv2.HoughLinesP(
+            blob_left, 1, np.pi/180,
+            threshold=35,
+            minLineLength=int(0.3*(roi_left[1]-roi_left[0])),
+            maxLineGap=8
+        )
+
+        roi_hough = np.zeros_like(blob_left)
+        self.last_line = None
+
+        if lines_left is not None:
+            # 후보 필터링: 각도/바닥 근접
+            cand = []
+            y0, y1, x0, x1 = roi_left
+            roi_h = y1 - y0
+
+            # 전역 y(=화면 75%)를 ROI 로컬로 변환해서 동일 기준으로 사용
+            y_target_global = int(h * self.y_ratio)
+            y_target_local  = np.clip(y_target_global - y0, 0, roi_h - 1)
+            bottom_thresh   = int(0.8*roi_h)
+
+            for L in lines_left:
+                x1r, y1r, x2r, y2r = L[0]
+                ang    = np.degrees(np.arctan2((y2r - y1r), (x2r - x1r)))
+                length = np.hypot(x2r - x1r, y2r - y1r)
+
+                if not (20 <= abs(ang) <= 80):
+                    continue
+                if max(y1r, y2r) < bottom_thresh:
+                    continue
+
+                x_mid = self._x_at_y(x1r, y1r, x2r, y2r, y_target_local)
+                cand.append((x1r, y1r, x2r, y2r, ang, length, x_mid))
+
+            # 스코어: 길이 우선 + 지난 프레임 근접성
+            best = None
+            best_score = 1e18
+            prev_ang = self.prev_ang if self.prev_ang is not None else None
+            prev_x   = self.prev_x   if self.prev_x   is not None else None
+
+            for (x1r, y1r, x2r, y2r, ang, length, x_mid) in cand:
+                score = -1.0*length
+                if prev_ang is not None: score += 0.7*abs(ang - prev_ang)
+                if prev_x  is not None: score += 0.3*abs(x_mid - prev_x)
+                if score < best_score:
+                    best_score = score
+                    best = (x1r, y1r, x2r, y2r, ang, x_mid)
+
+            if best is not None:
+                x1r, y1r, x2r, y2r, ang, x_mid = best
+
+                # ROI 로컬에 선만 그려서 3사분면 교체
+                cv2.line(roi_hough, (x1r, y1r), (x2r, y2r), 255, 1)
+
+                # 전체 좌표로 저장(후속 계산용)
+                self.last_line = (x1r + x0, y1r + y0, x2r + x0, y2r + y0)
+
+                # EMA 스무딩(후보 선택 안정화용)
+                alpha = 0.3
+                self.smooth_ang = ang   if self.smooth_ang is None else (1-alpha)*self.smooth_ang + alpha*ang
+                self.smooth_x   = x_mid if self.smooth_x   is None else (1-alpha)*self.smooth_x   + alpha*x_mid
+                self.prev_ang, self.prev_x = float(self.smooth_ang), float(self.smooth_x)
+
+                out[roi_left[0]:roi_left[1], roi_left[2]:roi_left[3]] = roi_hough
+
+        # (선택) thinning
         try:
-            thinned = cv2.ximgproc.thinning(dilated, thinningType=cv2.ximgproc.THINNING_GUOHALL)
+            thinned = cv2.ximgproc.thinning(out, thinningType=cv2.ximgproc.THINNING_GUOHALL)
         except Exception:
-            thinned = dilated
+            thinned = out
 
         return thinned
-        
+
+
     def __call__(self, image, result_image):
         h, w = image.shape[:2]
-
-        roi_left = (h//2, h, 0, w//2)
         roi_right = (h//2, h, w//2, w)
-
-        blob_left = image[roi_left[0]:roi_left[1], roi_left[2]:roi_left[3]]
         blob_right = image[roi_right[0]:roi_right[1], roi_right[2]:roi_right[3]]
-
-        lines_left = cv2.HoughLinesP(blob_left, 1, np.pi / 180, threshold=30, minLineLength=30, maxLineGap=10)
 
         lane_x, lane_angle = None, None
 
-        if lines_left is not None:
-            best = max(lines_left, key=lambda l: np.hypot(l[0][2]-l[0][0], l[0][3]-l[0][1]))
-            x1, y1, x2, y2 = best[0]
+        if self.last_line is not None:
+            x1, y1, x2, y2 = self.last_line
 
-            x1 += roi_left[2]; x2 += roi_left[2]
-            y1 += roi_left[0]; y2 += roi_left[0]
+            # 각도: 스무딩 값이 있으면 사용, 없으면 계산
+            lane_angle = float(self.smooth_ang) if self.smooth_ang is not None \
+                        else float(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
 
-            y_target = h // 2
+            # 최종 lane_x는 항상 "전역 y"에서 라인으로 딱 한 번만 계산
+            y_target = int(h * self.y_ratio)
             dx = (x2 - x1); dy = (y2 - y1)
+            lane_x = 0.5*(x1+x2) if abs(dy)<1e-6 else x1 + (y_target - y1) * (dx/(dy + 1e-6))
+            lane_x = float(np.clip(lane_x, 0, w - 1))
 
-            if abs(dy) < 1e-6:
-                lane_x = 0.5 * (x1 + x2)
-            else:
-                slope = dy / (dx + 1e-6)
-                lane_x = x1 + (y_target - y1) / slope
+        # 우측 차선 존재 판정(원하면 행-점유 방식으로 교체 가능)
+        # count_pix = cv2.countNonZero(blob_right)
+        # threshold = int((h - h//2) * 0.35)
+        # has_right = count_pix > threshold
+        # 권장 대안:
+        rows_touched = int(np.count_nonzero(blob_right.any(axis=1)))
+        has_right = rows_touched >= int((roi_right[1]-roi_right[0]) * 0.10)
 
-            lane_x = float(max(0, min(w - 1, lane_x)))    
-            lane_angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
-
-        count_pix = cv2.countNonZero(blob_right)
-        threshold = int((h - h//2) * 0.35)
-        has_right = count_pix > threshold
-
-        if lane_x is not None:  # 3사분면에 차선이 있을 경우
-            orig_w = result_image.shape[1]
-            lane_x = lane_x * (orig_w / w)
-            if not has_right:   
-                # 4사분면에 차선이 없을 경우 = 횡단보도 앞
-                return result_image, "STOP_LINE", lane_angle, lane_x
-            else:
-                # 정상 주행 상황
-                return result_image, "GO_STRAIGHT", lane_angle, lane_x
+        if lane_x is not None:
+            scale_x = result_image.shape[1] / float(w)
+            lane_x_scaled = lane_x * scale_x
+            status = "GO_STRAIGHT" if has_right else "STOP_LINE"
+            return result_image, status, lane_angle, lane_x_scaled
         else:
-            # 3사분면에 차선 없음 -> 서행
             return result_image, None, None, None
-            
-        # extract the center point based on the proportion
-        # centroid_sum = 0
-        # h, w = image.shape[:2]
-        # max_center_x = -1
-        # center_x = []
-        # for roi in self.rois:
-        #     blob = image[roi[0]:roi[1], roi[2]:roi[3]]  # crop ROI
-        #     contours = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]  # find contours
-        #     max_contour_area = self.get_area_max_contour(contours, 30)  # obtain the contour with the largest area
-        #     if max_contour_area is not None:
-        #         rect = cv2.minAreaRect(max_contour_area[0])  # the minimum bounding rectangle
-        #         box = np.intp(cv2.boxPoints(rect))  # four corners
-        #         for j in range(4):
-        #             box[j, 1] = box[j, 1] + roi[0]
-        #         cv2.drawContours(result_image, [box], -1, (255, 255, 0), 2)  # draw the rectangle composed of the four points
-
-        #         # obtain the diagonal points of the rectangle
-        #         pt1_x, pt1_y = box[0, 0], box[0, 1]
-        #         pt3_x, pt3_y = box[2, 0], box[2, 1]
-        #         # the center point of the line
-        #         line_center_x, line_center_y = (pt1_x + pt3_x) / 2, (pt1_y + pt3_y) / 2
-
-        #         cv2.circle(result_image, (int(line_center_x), int(line_center_y)), 5, (0, 0, 255), -1)  # draw the center point
-        #         center_x.append(line_center_x)
-        #     else:
-        #         center_x.append(-1)
-        # for i in range(len(center_x)):
-        #     if center_x[i] != -1:
-        #         if center_x[i] > max_center_x:
-        #             max_center_x = center_x[i]
-        #         centroid_sum += center_x[i] * self.rois[i][-1]
-        # if centroid_sum == 0:
-        #     return result_image, None, max_center_x
-        # center_pos = centroid_sum / self.weight_sum  # calculate the center point based on the proportion
-        # angle = math.degrees(-math.atan((center_pos - (w / 2.0)) / (h / 2.0)))
-        
-        # return result_image, angle, max_center_x
 
 
 image_queue = queue.Queue(2)
@@ -243,7 +289,6 @@ def image_callback(ros_image):
 
 def main():
     running = True
-    # self.get_logger().info('\033[1;32m%s\033[0m' % (*tuple(lab_data['lab']['Stereo'][self.target_color]['min']), tuple(lab_data['lab']['Stereo'][self.target_color]['max'])))
 
     while running:
         try:
@@ -256,10 +301,7 @@ def main():
         binary_image = lane_detect.get_binary(image)
         cv2.imshow('binary', binary_image)
         img = image.copy()
-        # y = lane_detect.add_horizontal_line(binary_image)
-        # min_x = cv2.minMaxLoc(binary_image)[-1][0]
-        # cv2.line(img, (min_x, y), (640, y), (255, 255, 255), 50)  # draw a virtual line to guide the turning
-        # result_image, angle, x = lane_detect(binary_image, image.copy()) 
+
         '''
         up, down = lane_detect.add_vertical_line_far(binary_image)
         #up, down, center = lane_detect.add_vertical_line_near(binary_image)
