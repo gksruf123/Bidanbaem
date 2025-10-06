@@ -391,12 +391,12 @@ class SelfDrivingNode(Node):
                             # self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance}\033[0m")
                             if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
                                 self.start_dist = self.cw_distance
-                                self.mul = 1.3
+                                self.mul = 1.6
                                 self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
                             else:
                                 self.turn_right = True
                                 self.start_dist = self.fence_distance
-                                self.mul = 0.8
+                                self.mul = 1.6
                                 self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
 
                             self.start_count += 1
@@ -417,7 +417,7 @@ class SelfDrivingNode(Node):
                             self.pid.SetPoint = 200  # the coordinate of the line while the robot is in the middle of the lane
                             self.pid.update(left_lane_x)
                             if self.machine_type != 'MentorPi_Acker':
-                                twist.angular.z = common.set_range(self.pid.output, -0.15, 0.18)
+                                twist.angular.z = common.set_range(self.pid.output, -0.20, 0.20)
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
 

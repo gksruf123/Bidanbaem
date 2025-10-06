@@ -30,8 +30,8 @@ class LaneDetector(object):
         if os.environ['DEPTH_CAMERA_TYPE'] == 'ascamera':
             self.left_lane_rois = (
                 (338, 360, 0, 320, 0.7),
-                (292, 315, 0, 320, 0.2),
-                (248, 270, 0, 320, 0.1)
+                (292, 315, 0, 275, 0.2),
+                (248, 270, 0, 230, 0.1)
             )
             self.right_lane_rois = (
                 (338, 360, 320, 640, 0.7),
