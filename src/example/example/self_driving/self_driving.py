@@ -26,6 +26,7 @@ from example.self_driving import lane_detect
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from ros_robot_controller_msgs.msg import BuzzerState, SetPWMServoState, PWMServoState
+from datetime import datetime
 
 class SelfDrivingNode(Node):
     def __init__(self, name):
@@ -50,6 +51,7 @@ class SelfDrivingNode(Node):
         self.mecanum_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
         self.servo_state_pub = self.create_publisher(SetPWMServoState, 'ros_robot_controller/pwm_servo/set_state', 1)
         self.result_publisher = self.create_publisher(Image, '~/image_result', 1)
+        self.binary_publisher = self.create_publisher(Image, '~/image_binary', 1)
 
         self.create_service(Trigger, '~/enter', self.enter_srv_callback) # enter the game
         self.create_service(Trigger, '~/exit', self.exit_srv_callback) # exit the game
@@ -294,7 +296,7 @@ class SelfDrivingNode(Node):
 
                 if depth_m is not None:
                     y0, y1 = int(0.20*h), int(0.40*h)
-                    x0, x1 = int(0.40*w), int(0.80*w)
+                    x0, x1 = int(0.20*w), int(0.80*w)
                     roi = depth_m[y0:y1, x0:x1]
 
                     valid = np.isfinite(roi) & (roi > 0.05)
@@ -502,6 +504,7 @@ class SelfDrivingNode(Node):
 
             
             self.result_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
+            self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
 
            
             target_period = 1.0 / 20.0   # 20fps → 0.05초
@@ -514,7 +517,8 @@ class SelfDrivingNode(Node):
 
     # Obtain the target detection result
     def get_object_callback(self, msg):
-        
+        crt_time = datetime.time()
+
         self.objects_info = msg.objects
         if self.objects_info == []:  # If it is not recognized, reset the variable
             self.traffic_signs_status = None
@@ -539,7 +543,7 @@ class SelfDrivingNode(Node):
                 elif class_name == 'red' or class_name == 'green':  # obtain the status of the traffic light
                     self.traffic_signs_status = i
                
-
+            print(crt_time)
             self.get_logger().info('\033[1;32m%s\033[0m' % class_name)
             # self.crosswalk_distance = min_distance
 
