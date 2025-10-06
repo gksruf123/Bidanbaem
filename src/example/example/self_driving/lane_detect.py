@@ -162,14 +162,14 @@ class LaneDetector(object):
         out = dilated.copy()
 
         # 3사분면 ROI (로컬 좌표계)
-        roi_left = (h//2, h, 0, w//2)  # (y0:y1, x0:x1)
+        roi_left = (int(h*0.3), h, 0, w//2)  # (y0:y1, x0:x1)
         blob_left = dilated[roi_left[0]:roi_left[1], roi_left[2]:roi_left[3]]
 
         # 허프 파라미터(안정화용)
         lines_left = cv2.HoughLinesP(
             blob_left, 1, np.pi/180,
             threshold=100,
-            minLineLength=int(0.25*(roi_left[1]-roi_left[0])),
+            minLineLength=10,
             maxLineGap=20
         )
 

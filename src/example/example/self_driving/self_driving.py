@@ -488,7 +488,7 @@ class SelfDrivingNode(Node):
                 # line following processing
                     result_image, status, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
                     x_setpoint = int(w * 0.20) # 화면 중앙에서 살짝 왼쪽.
-                    angle_setpoint = 75
+                    angle_setpoint = 80
 
                     if status == "GO_STRAIGHT":
                         pos_error = lane_x - x_setpoint
