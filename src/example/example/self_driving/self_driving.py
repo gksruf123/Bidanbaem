@@ -84,7 +84,9 @@ class SelfDrivingNode(Node):
                 self._yolo_is_on = True
                 self.get_logger().info("[self_driving] YOLO: START")
         if delay_s > 0:
-            threading.Timer(delay_s, _do_start, daemon=True).start()
+            t = threading.Timer(delay_s, _do_start)
+            t.daemon = True
+            t.start()
         else:
             _do_start()
 
@@ -100,7 +102,9 @@ class SelfDrivingNode(Node):
                 self._yolo_is_on = False
                 self.get_logger().info("[self_driving] YOLO: STOP")
         if delay_s > 0:
-            threading.Timer(delay_s, _do_stop, daemon=True).start()
+            t = threading.Timer(delay_s, _do_stop)
+            t.daemon = True
+            t.start()
         else:
             _do_stop()
 
@@ -121,9 +125,10 @@ class SelfDrivingNode(Node):
         def _auto_stop():
             self.yolo_stop()
             self._yolo_timer = None
-        self._yolo_timer = threading.Timer(seconds + start_delay, _auto_stop)
-        self._yolo_timer.daemon = True
-        self._yolo_timer.start()
+        t = threading.Timer(seconds + start_delay, _auto_stop)
+        t.daemon = True
+        t.start()
+        self._yolo_timer = t
 
 
     def init_process(self):

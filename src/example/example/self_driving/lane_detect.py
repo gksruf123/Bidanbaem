@@ -169,8 +169,8 @@ class LaneDetector(object):
         lines_left = cv2.HoughLinesP(
             blob_left, 1, np.pi/180,
             threshold=100,
-            minLineLength=int(0.5*(roi_left[1]-roi_left[0])),
-            maxLineGap=8
+            minLineLength=int(0.25*(roi_left[1]-roi_left[0])),
+            maxLineGap=20
         )
 
         roi_hough = np.zeros_like(blob_left)
