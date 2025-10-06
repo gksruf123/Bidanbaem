@@ -414,6 +414,7 @@ class SelfDrivingNode(Node):
                                 twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
 
                     if self.turn:
+                        self.pid.clear()
                         self.get_logger().info("\033[1;31mstate: **turn**\033[0m")
                         twist.linear.x = 0.0
                         twist.angular.z = self.turn_angular_z
