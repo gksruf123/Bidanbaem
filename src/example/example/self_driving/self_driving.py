@@ -297,7 +297,7 @@ class SelfDrivingNode(Node):
 
                 if depth_m is not None:
                     y0, y1 = int(0.20*h), int(0.40*h)
-                    x0, x1 = int(0.20*w), int(0.80*w)
+                    x0, x1 = int(0.30*w), int(0.70*w)
                     roi = depth_m[y0:y1, x0:x1]
 
                     valid = np.isfinite(roi) & (roi > 0.05)
@@ -407,7 +407,7 @@ class SelfDrivingNode(Node):
                 # line following processing
                     result_image, status, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
                     x_setpoint = int(w * 0.20) # 화면 중앙에서 살짝 왼쪽.
-                    angle_setpoint = 45
+                    angle_setpoint = 60
 
                     if status == "GO_STRAIGHT":
                         pos_error = lane_x - x_setpoint
