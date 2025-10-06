@@ -271,7 +271,7 @@ class SelfDrivingNode(Node):
         self.mecanum_pub.publish(Twist())
 
     def main(self):
-        self.send_request(self.stop_yolov5_client, Trigger.Request())
+        # self.send_request(self.stop_yolov5_client, Trigger.Request())
         # 욜로 수신 중단
 
         while self.is_running:
