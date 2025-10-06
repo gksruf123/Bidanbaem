@@ -414,7 +414,7 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(Twist())
                             continue
                         if left_lane_x >= 0 and not self.stop:
-                            self.pid.SetPoint = 150  # the coordinate of the line while the robot is in the middle of the lane
+                            self.pid.SetPoint = 200  # the coordinate of the line while the robot is in the middle of the lane
                             self.pid.update(left_lane_x)
                             if self.machine_type != 'MentorPi_Acker':
                                 twist.angular.z = common.set_range(self.pid.output, -0.15, 0.18)
@@ -451,19 +451,19 @@ class SelfDrivingNode(Node):
                     # self.mecanum_pub.publish(Twist())
 
                 
-                    if self.objects_info:
-                        for i in self.objects_info:
-                            box = i.box
-                            class_name = i.class_name
-                            cls_conf = i.score
-                            cls_id = self.classes.index(class_name)
-                            color = colors(cls_id, True)
-                            plot_one_box(
-                                box,
-                                result_image,
-                                color=color,
-                                label="{}:{:.2f}".format(class_name, cls_conf),
-                            )
+                    # if self.objects_info:
+                    #     for i in self.objects_info:
+                    #         box = i.box
+                    #         class_name = i.class_name
+                    #         cls_conf = i.score
+                    #         cls_id = self.classes.index(class_name)
+                    #         color = colors(cls_id, True)
+                    #         plot_one_box(
+                    #             box,
+                    #             result_image,
+                    #             color=color,
+                    #             label="{}:{:.2f}".format(class_name, cls_conf),
+                    #         )
                 else:
                     self.mecanum_pub.publish(Twist())
 
