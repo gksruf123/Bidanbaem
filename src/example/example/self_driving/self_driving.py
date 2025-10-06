@@ -116,7 +116,7 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.2  # normal driving speed
+        self.normal_speed = 0.1  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -403,8 +403,8 @@ class SelfDrivingNode(Node):
 
                 # line following processing
                     result_image, status, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
-                    x_setpoint = int(w * 0.35) # 화면 중앙에서 살짝 왼쪽.
-                    angle_setpoint = 60
+                    x_setpoint = int(w * 0.20) # 화면 중앙에서 살짝 왼쪽.
+                    angle_setpoint = 45
 
                     if status == "GO_STRAIGHT":
                         pos_error = lane_x - x_setpoint
@@ -514,6 +514,7 @@ class SelfDrivingNode(Node):
 
     # Obtain the target detection result
     def get_object_callback(self, msg):
+        
         self.objects_info = msg.objects
         if self.objects_info == []:  # If it is not recognized, reset the variable
             self.traffic_signs_status = None

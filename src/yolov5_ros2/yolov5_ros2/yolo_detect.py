@@ -170,6 +170,20 @@ class YoloV5Ros2(Node):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
 
             oi = ObjectInfo()
+            
+            if name == "class0":
+                name = "crosswalk"
+            elif name == "class1":
+                name = "green"
+            elif name == "class2":
+                name = "park"
+            elif name == "class3":
+                name = "red"
+            elif name == "class4":
+                name = "right"
+            elif name == "class5":
+                name = "go"
+
             oi.class_name = name
             oi.box = [x1, y1, x2, y2]
             oi.score = round(float(scores[i]), 2)
