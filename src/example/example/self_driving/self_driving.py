@@ -504,7 +504,7 @@ class SelfDrivingNode(Node):
 
             
             self.result_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
-            self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
+            self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(binary_image, "mono8"))
 
            
             target_period = 1.0 / 20.0   # 20fps → 0.05초
