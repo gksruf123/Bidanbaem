@@ -142,6 +142,9 @@ class SelfDrivingNode(Node):
 
         self.stop_duration = 1.0  # 원하는 정지 시간(초)
         self.stop_until = 0.0
+
+        self.last_objects_ts = time.time()
+        self.objects_timeout = 1.0  # 초
         
 
     def get_node_state(self, request, response):
@@ -149,10 +152,7 @@ class SelfDrivingNode(Node):
         return response
 
     def send_request(self, client, msg):
-        future = client.call_async(msg)
-        while rclpy.ok():
-            if future.done() and future.result():
-                return future.result()
+        client.call_async(msg)
 
     def enter_srv_callback(self, request, response):
         self.get_logger().info('\033[1;32m%s\033[0m' % "self driving enter")
@@ -271,6 +271,9 @@ class SelfDrivingNode(Node):
         self.mecanum_pub.publish(Twist())
 
     def main(self):
+        self.send_request(self.stop_yolov5_client, Trigger.Request())
+        # 욜로 수신 중단
+
         while self.is_running:
             time_start = time.time()
             try:
@@ -280,6 +283,14 @@ class SelfDrivingNode(Node):
                     break
                 else:
                     continue
+
+            # 욜로 감지된 지 오래됐으면 기존의 욜로 객체 전부 초기화
+            yolo_now = time.time()
+            if yolo_now - self.last_objects_ts > self.objects_timeout:
+                self.objects_info = []
+                self.traffic_signs_status = None
+                self.park_x = -1
+                self.turn_right = False 
 
             result_image = image.copy()
             if self.start:
@@ -512,6 +523,7 @@ class SelfDrivingNode(Node):
             time_d = target_period - (time.time() - time_start)
             if time_d > 0:
                 time.sleep(time_d)
+
         self.mecanum_pub.publish(Twist())
         rclpy.shutdown()
 
@@ -520,6 +532,7 @@ class SelfDrivingNode(Node):
     def get_object_callback(self, msg):
         frame_per_sec = 1 / (time.time() - self.crt_time)
         self.crt_time = time.time()
+        self.last_objects_ts = time.time()
 
         self.objects_info = msg.objects
         if self.objects_info == []:  # If it is not recognized, reset the variable

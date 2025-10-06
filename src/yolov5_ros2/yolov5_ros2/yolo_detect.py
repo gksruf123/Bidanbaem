@@ -12,6 +12,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
 import yaml
+import numpy as np
 #from sdk import common
 
 from yolov5_ros2.cv_tool import px2xy
@@ -133,19 +134,35 @@ class YoloV5Ros2(Node):
         scores = predictions[:, 4]
         categories = predictions[:, 5]
 
+        categories = categories.astype(np.int32, copy=False)
+        keep_mask = ~np.isin(categories, [0, 2, 5])
+
+        boxes = boxes[keep_mask]
+        scores = scores[keep_mask]
+        categories = categories[keep_mask]
 
         # 5) 원본 해상도로 복원(스케일백)
         sx = orig_w / 640.0
         sy = orig_h / 640.0
 
         objects_info = []  # 프레임당 한 번만 퍼블리시하려면 루프 바깥에서 모으기
+        MAP = {
+            "class0": "crosswalk",
+            "class1": "green",
+            "class2": "park",
+            "class3": "red",
+            "class4": "right",
+            "class5": "go",
+        }
         for i in range(len(categories)):
             x1, y1, x2, y2 = boxes[i]
             # 스케일백
             x1 = int(x1 * sx); x2 = int(x2 * sx)
             y1 = int(y1 * sy); y2 = int(y2 * sy)
 
-            name = detect_result.names[int(categories[i])]
+            # 1) 이름 매핑 (가장 먼저)
+            raw_name = detect_result.names[int(categories[i])]
+            name = MAP.get(raw_name, raw_name)
 
             detection2d = Detection2D()
             if (os.environ.get("ROS_DISTRO") or "").lower().startswith("galactic"):
@@ -170,20 +187,6 @@ class YoloV5Ros2(Node):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
 
             oi = ObjectInfo()
-            
-            if name == "class0":
-                name = "crosswalk"
-            elif name == "class1":
-                name = "green"
-            elif name == "class2":
-                name = "park"
-            elif name == "class3":
-                name = "red"
-            elif name == "class4":
-                name = "right"
-            elif name == "class5":
-                name = "go"
-
             oi.class_name = name
             oi.box = [x1, y1, x2, y2]
             oi.score = round(float(scores[i]), 2)
