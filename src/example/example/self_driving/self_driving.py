@@ -372,7 +372,12 @@ class SelfDrivingNode(Node):
                         # self.detected_right = False
                         # self.detected_park = False
                         # self.traffic_signs_status = None
-                        self.mecanum_pub.publish(Twist())
+                        twist.linear.x = 0.0
+                        if left_lane_x == -1:
+                            twist.angular.z = 0.15
+                        else:
+                            twist.angular.z = 0.0
+                        self.mecanum_pub.publish(twist)
                         continue
 
                     if self.start: # odom을 추가하여
