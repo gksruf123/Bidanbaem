@@ -98,6 +98,7 @@ class SelfDrivingNode(Node):
         self.stop = False
         self.turn = False
         self.detect = True
+        self.turn_right = False
 
         self.detected_cw = False
         self.detected_go = False
@@ -326,7 +327,7 @@ class SelfDrivingNode(Node):
 
                 if self.is_start: # 맨 처음 'green' 감지
                     # line following processing
-                    result_image, left_lane_x, turn_right = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
+                    result_image, left_lane_x, _ = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
                     self.get_logger().info(f"\033[1;32m\nleft_lane_x: {left_lane_x}\033[0m")
 
                     if self.go_finish and self.turn_finish:
@@ -344,7 +345,7 @@ class SelfDrivingNode(Node):
                                 self.park = True
                                 self.start = False
                                 self.go_finish = False
-                            elif turn_right:
+                            elif self.turn_right:
                                 self.start = False
                                 self.turn = True
                                 self.turn_finish = False
@@ -357,6 +358,7 @@ class SelfDrivingNode(Node):
                                 self.call_start()
                                 self.start = False
                         elif self.turn:
+                            self.turn_right = False
                             self.turn_count = 0
                             self.wait = True
                             self.get_logger().info(f"\033[1;32mturn is done call_start\033[0m")
@@ -392,6 +394,7 @@ class SelfDrivingNode(Node):
                                 self.mul = 1.3
                                 self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
                             else:
+                                self.turn_right = True
                                 self.start_dist = self.fence_distance
                                 self.mul = 0.8
                                 self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
