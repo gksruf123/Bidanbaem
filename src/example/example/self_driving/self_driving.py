@@ -406,10 +406,10 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(Twist())
                             continue
                         if left_lane_x >= 0 and not self.stop:
-                            self.pid.SetPoint = 250  # the coordinate of the line while the robot is in the middle of the lane
+                            self.pid.SetPoint = 150  # the coordinate of the line while the robot is in the middle of the lane
                             self.pid.update(left_lane_x)
                             if self.machine_type != 'MentorPi_Acker':
-                                twist.angular.z = common.set_range(self.pid.output, -0.15, 0.15)
+                                twist.angular.z = common.set_range(self.pid.output, -0.15, 0.18)
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
 
@@ -422,7 +422,7 @@ class SelfDrivingNode(Node):
                             self.turn_count += 1
                             self.basis_turn_point = self.degree      # 현재 기준 시작 각도 지정
 
-                        if abs(self.basis_turn_point - self.degree) > 75:
+                        if abs(self.basis_turn_point - self.degree) > 80:
                             self.turn_finish = True
                             # self.detected_cw = False
                             # self.detected_go = False
