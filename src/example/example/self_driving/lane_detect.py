@@ -167,6 +167,7 @@ class LaneDetector(object):
                 lane_center_x.append(line_center_x)
             else:
                 lane_center_x.append(-1)
+        return result_image
     
     def get_max_lane_x(self, n, lane_center_x):
         max_center_x = -1
@@ -192,9 +193,9 @@ class LaneDetector(object):
         right_lane_center_x = []
         center_lane_center_x = []
         turn_right = False
-        self.get_center_x(image, result_image, self.left_lane_rois, left_lane_center_x)
+        result_image = self.get_center_x(image, result_image, self.left_lane_rois, left_lane_center_x)
         left_max_center_x = self.get_max_lane_x(len(left_lane_center_x), left_lane_center_x)
-        self.get_center_x(image, result_image, self.turn_rois, center_lane_center_x)
+        result_image = self.get_center_x(image, result_image, self.turn_rois, center_lane_center_x)
         turn_right = center_lane_center_x[0] != -1
         
         return result_image, left_max_center_x, turn_right

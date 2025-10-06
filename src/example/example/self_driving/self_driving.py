@@ -327,7 +327,7 @@ class SelfDrivingNode(Node):
                 if self.is_start: # 맨 처음 'green' 감지
                     # line following processing
                     result_image, left_lane_x, turn_right = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
-                    # self.get_logger().info(f"\033[1;32m\nleft_lane_x: {left_lane_x}\tright_lane_x: {right_lane_x}\tmid_lane_x: {mid_lane_x}\033[0m")
+                    self.get_logger().info(f"\033[1;32m\nleft_lane_x: {left_lane_x}\033[0m")
 
                     if self.go_finish and self.turn_finish:
                         if self.wait:
@@ -389,7 +389,7 @@ class SelfDrivingNode(Node):
                             # self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance}\033[0m")
                             if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
                                 self.start_dist = self.cw_distance
-                                self.mul = 1.8
+                                self.mul = 1.3
                                 self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
                             else:
                                 self.start_dist = self.fence_distance
