@@ -183,8 +183,8 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.0  # normal driving speed
-        self.slow_down_speed = 0.0  # slowing down speed
+        self.normal_speed = 0.2  # normal driving speed
+        self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
         self.red_loss_count = 0
@@ -198,7 +198,7 @@ class SelfDrivingNode(Node):
         self.depth_stamp = None
         self.avoid_until = 0.0
         self.dmin_ema = None        # d_min 평활화용
-        self.min_wall_speed = 0.0
+        self.min_wall_speed = 0.1
         self.last_avoid_s = 0.0
 
         self.last_stop_time = 0     # 횡단보도 마지막에 멈췄던 시간 체크용
