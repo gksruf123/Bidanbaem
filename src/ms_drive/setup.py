@@ -14,7 +14,7 @@ setup(
         ('share/' + package_name + '/config', [
             'config/slam_toolbox_params.yaml',
             'config/ekf.yaml',
-            'config/nav_params.yaml'
+            'config/nav_params.yaml',
             'config/slam_nav.rviz'
         ]),
     ],

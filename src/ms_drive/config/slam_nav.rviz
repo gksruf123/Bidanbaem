@@ -1,26 +1,34 @@
-Panels:
-  - Class: rviz/Displays
-    Name: Displays
 Visualization Manager:
-  Class: ""
-  Name: root
   Displays:
     - Name: TF
-      Class: rviz/TF
+      Class: rviz_default_plugins/TF
       Enabled: true
     - Name: RobotModel
-      Class: rviz/RobotModel
+      Class: rviz_default_plugins/RobotModel
       Enabled: true
       Robot Description: robot_description
-      TF Prefix: ''
     - Name: Map
-      Class: rviz/Map
+      Class: rviz_default_plugins/Map
       Enabled: true
       Topic: /map
     - Name: LaserScan
-      Class: rviz/LaserScan
+      Class: rviz_default_plugins/LaserScan
       Enabled: true
-      Topic: /scan
+      Topic: /scan_raw
+    - Name: Wheel Odom Path
+      Class: rviz_default_plugins/Path
+      Enabled: true
+      Topic: /odom  # published by your wheel odom
+      Color: 255;0;0  # red
+      Buffer Length: 1000
+      Line Style: Lines
+    - Name: SLAM Path
+      Class: rviz_default_plugins/Path
+      Enabled: true
+      Topic: /slam_toolbox/trajectory  # published by slam_toolbox
+      Color: 0;255;0  # green
+      Buffer Length: 1000
+      Line Style: Lines
+
   Global Options:
     Fixed Frame: map
-    Frame Rate: 30

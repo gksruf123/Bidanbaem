@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from collections import defaultdict
-from enum import IntEnum
+from enum import IntEnum, auto
 import json
 import math
 import threading
@@ -25,14 +25,21 @@ from std_srvs.srv import SetBool, Trigger
 ### Check camera transform ### 
 import tf2_ros
 import tf2_geometry_msgs
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import PointStamped, TransformStamped
+
 
 class Status(IntEnum):
-    stopped = 0
-    turning = 1
-    moving = 2
-    scanning = 3
+    init = auto()
+    """scanning for green"""
+    stopped = auto()
+    turning = auto()
+    """always right turn"""
+    moving = auto()
+    arrived = auto()
+    scanning = auto()
 
+def default_detect():
+    return {'count':0, 'box': [0.0]*4}
 
 class PixelToOdomTransformer:
     def __init__(self, node):
@@ -45,6 +52,11 @@ class PixelToOdomTransformer:
         self.fy = 576.1083374023438  
         self.cx = 332.5771484375
         self.cy = 232.551513671875
+
+        self.camera_pitch = math.radians(12)
+        self.camera_x = 0
+        self.camera_y = 0
+        self.camera_z = 0
 
     def pixel_to_odom_direct(self, u, v, depth_mm, robot_odom):
         """
@@ -86,7 +98,7 @@ class PixelToOdomTransformer:
         robot_ori = robot_odom.pose.pose.orientation
         
         # Get robot yaw from quaternion
-        robot_yaw = self.quaternion_to_yaw(robot_ori)
+        robot_yaw = yaw_from_quaternion(robot_ori)
         
         # Transform point from robot frame to world frame
         cos_yaw = math.cos(robot_yaw)
@@ -107,6 +119,46 @@ class PixelToOdomTransformer:
         
         return odom_point
 
+
+class MapOdomWrapper:
+    def __init__(self, node):
+        self.node = node
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, node)
+    
+    def get_odom_msg(self):
+        try:
+            # Lookup the latest transform from SLAM map frame to base_link
+            t: TransformStamped = self.tf_buffer.lookup_transform(
+                'map',      # target frame
+                'base_link',# source frame
+                rclpy.time.Time()
+            )
+            odom_msg = Odometry()
+            odom_msg.header.stamp = self.node.get_clock().now().to_msg()
+            odom_msg.header.frame_id = 'map'
+            odom_msg.child_frame_id = 'base_link'
+            
+            # Fill position
+            odom_msg.pose.pose.position.x = t.transform.translation.x
+            odom_msg.pose.pose.position.y = t.transform.translation.y
+            odom_msg.pose.pose.position.z = t.transform.translation.z
+            
+            # Fill orientation
+            odom_msg.pose.pose.orientation = t.transform.rotation
+
+            # You can optionally zero velocities or compute from tf if needed
+            odom_msg.twist.twist.linear.x = 0.0
+            odom_msg.twist.twist.linear.y = 0.0
+            odom_msg.twist.twist.linear.z = 0.0
+            odom_msg.twist.twist.angular.x = 0.0
+            odom_msg.twist.twist.angular.y = 0.0
+            odom_msg.twist.twist.angular.z = 0.0
+
+            return odom_msg
+        except Exception as e:
+            return None
+
 class Navigation(Node):
     def __init__(self, name='MS_Self_Drive'):
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
@@ -119,6 +171,7 @@ class Navigation(Node):
         # Initialize pixel to odom transformer
         self.pixel_transformer = PixelToOdomTransformer(self)
 
+        self.odom_mapper = MapOdomWrapper(self)
         self.odom_sub = Subscriber(self, Odometry, '/odom')
         self.rgb_sub = Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image')
         self.depth_sub = Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw')
@@ -152,7 +205,7 @@ class Navigation(Node):
         self.road_direction = None
         self.last_target_time = 0
         self.target_timeout = 2.0
-        self.last_target_persist_time = 5.0  # How long to keep using last target (seconds)
+        self.last_target_persist_time = 3.0  # How long to keep using last target (seconds)
         
         # Control parameters for mecanum with road alignment
         self.max_linear_speed = 0.5
@@ -180,8 +233,8 @@ class Navigation(Node):
         """Point, Linear Z 0.0 means target, alignment otherwise"""
         self.timer = self.create_timer(0.0, self.init_process)
 
-        self.detects = defaultdict()
-        """[name]: {name, box, count}"""
+        self.detects = defaultdict(default_detect)
+        """[name]: {box, count}"""
 
         self.get_logger().info("Lane following with persistent target tracking started")
 
@@ -368,7 +421,7 @@ class Navigation(Node):
 
     def arrive_srv_cb(self, req, resp):
         self.get_logger().info('driver has arrived')
-        self.status = Status.stopped
+        self.status = Status.arrived
         resp.success = True
         resp.message = 'OK'
         return resp
@@ -390,6 +443,9 @@ class Navigation(Node):
 
     def yolo_cb(self, msg:ObjectsInfo):
         objects = msg.objects
+        if not self.status == Status.scanning:
+            self.get_logger().warn(f'yolo callback when status is not scanning, {self.status}')
+            return
         if not objects:
             return
         for obj in objects:
@@ -400,7 +456,10 @@ class Navigation(Node):
                 count = self.detects[name]['count'] + 1
             else:
                 count = 0
-            self.detects[name] = {'name':name, 'box':points, 'count':count}
+            self.detects[name] = {'box':points, 'count':count}
+
+        
+        
             
 
     def direct(self, rgb_m, dep_m, odom_m:Odometry):
@@ -451,15 +510,19 @@ class Navigation(Node):
         ff_right_far = None
         
         if seedpoint_l:
-            ff_left = self.ff_mask(mask.copy(), seedpoint_l)
+            ff_left = self.ff_mask(mask, seedpoint_l) # since FF_MASK_ONLY, perhaps just give mask instead of copying over.
         if seedpoint_r:
-            ff_right = self.ff_mask(mask.copy(), seedpoint_r)
+            ff_right = self.ff_mask(mask, seedpoint_r)
 
         return seedpoint_l, seedpoint_r, ff_left, ff_right        
 
     def proc(self, rgb_m, dep_m, odom_m:Odometry = None):
         image_bgr = self.cv_bridge.imgmsg_to_cv2(rgb_m, 'bgr8')
         image_dep = self.cv_bridge.imgmsg_to_cv2(dep_m, '16UC1')
+
+        if (tmp := self.odom_mapper.get_odom_msg()):
+            odom_m = tmp
+            self.print_odom(odom_m)
 
         oh, ow = image_bgr.shape[:2]
         scale = 1/4
@@ -480,7 +543,7 @@ class Navigation(Node):
         cleaned = cv2.morphologyEx(mask_lab, cv2.MORPH_OPEN, kernel_open)
         
         # Fill small holes
-        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel_close)
 
         seedpoint_l, seedpoint_r, ff_left, ff_right = self.lane_detection(cleaned)
@@ -492,63 +555,83 @@ class Navigation(Node):
         out = cv2.cvtColor(mask_lab, cv2.COLOR_GRAY2BGR)
 
         self.get_logger().info(f'stat: {self.status}')
-        if not self.status == Status.stopped | Status.scanning: ## only find target when stopped. 
+        if not self.status == Status.stopped | Status.arrived | Status.init: ## only find target when stopped or arrived somewhere
             return
+        
+        if self.status == Status.init:
+            # init logic
+            if not self.detects['green'].count:
+                return
+                
+        
+        if self.status == Status.scanning:
+            # do scan logic
+            # are we in front of crosswalk or right turn? 
+            green = self.detects['green']
+            go = self.detects['go']
+            if green.count or go.count: # good to go 
+                pass
+            else:
+                return
         
         # Find target point between lanes
         if seedpoint_l and seedpoint_r:
-            _step = 5
-            _y = h//4
-            while _y < h-1:
-                ll = np.where(ff_left[_y, :] > 0)[0]
-                lr = np.where(ff_right[_y, :] > 0)[0]
-                if len(ll) and len(lr):
-                    lx = ll[-1]
-                    rx = lr[0]
-                    if rx in ll:
-                        break
-                    if rx - lx < 100: ## 
-                        target_point = None
-                        break
-                    else:
-                        target_point = ((lx+rx)//2, _y)
-                        target_depth = image_dep[_y, (lx+rx)//2]
-                        new_target_found = True
-                        if self.crosswalks % 2:
-                            self.status = Status.turning
-                            self.rightturns += 1
+            if ff_left == ff_right: #not sure if this will work, find a way to compare ff masks
+                pass # we're presumably doing a right turn.
+            else:
+                _step = 5
+                _y = h//4
+                while _y < h-1:
+                    ll = np.where(ff_left[_y, :] > 0)[0]
+                    lr = np.where(ff_right[_y, :] > 0)[0]
+                    if len(ll) and len(lr):
+                        lx = ll[-1]
+                        rx = lr[0] # gotta be careful with cam angles, might cause problems
+                        if rx in ll:
+                            break
+                        if rx - lx < 100: ## 
+                            target_point = None
+                            break
                         else:
-                            self.status = Status.moving
-                            self.crosswalks += 1
+                            target_point = ((lx+rx)//2, _y)
+                            target_depth = image_dep[_y, (lx+rx)//2]
+                            new_target_found = True
+                            if self.crosswalks % 2:
+                                self.status = Status.turning
+                                self.rightturns += 1
+                            else:
+                                self.status = Status.moving
+                                self.crosswalks += 1
 
-                    cv2.line(mask_lab, (lx, _y), (rx, _y), (128,128,128), 2)
-                    break
-                _y += _step
-            _step = 2
-            _y = 0
-            points = []
-            while _y < h-1:
-                ll = np.where(ff_left[_y, :] > 0)[0]
-                lr = np.where(ff_right[_y, :] > 0)[0]
-                if len(ll) and len(lr):
-                    lx = ll[-1]
-                    rx = lr[0]
-                    if rx in ll:
+                        cv2.line(mask_lab, (lx, _y), (rx, _y), (128,128,128), 2)
                         break
-                    points.append(((lx+rx)//2, _y))
-                _y += _step
-            
-            for _x, _y in points:
-                cv2.circle(out, (_x, _y), 1, (0,0,255), 1)
-        
-        
-        out = cv2.resize(out, (640, 480), interpolation=cv2.INTER_NEAREST_EXACT)
-        cv2.line(out, (332, 232), (332, 480 - 1), (0,255,0), 1)
-        cv2.circle(out, (332,232), 1, (255,0,0), 1) # true center
-        cv2.imshow('lab mask', out)
-        cv2.waitKey(1)
+                    _y += _step
 
-        return
+                _step = 2
+                _y = 0
+                points = []
+                while _y < h-1:
+                    ll = np.where(ff_left[_y, :] > 0)[0]
+                    lr = np.where(ff_right[_y, :] > 0)[0]
+                    if len(ll) and len(lr):
+                        lx = ll[-1]
+                        rx = lr[0]
+                        if rx in ll:
+                            break
+                        points.append(((lx+rx)//2, _y))
+                    _y += _step
+                
+                for _x, _y in points:
+                    cv2.circle(out, (_x, _y), 1, (0,0,255), 1)
+        
+        
+        # out = cv2.resize(out, (640, 480), interpolation=cv2.INTER_NEAREST_EXACT)
+        # cv2.line(out, (332, 232), (332, 480 - 1), (0,255,0), 1)
+        # cv2.circle(out, (332,232), 1, (255,0,0), 1) # true center
+        # cv2.imshow('lab mask', out)
+        # cv2.waitKey(1)
+
+        # return
 
         current_time = time.time()
         
@@ -592,7 +675,7 @@ class Navigation(Node):
         if self.current_target:
             # Estimate road direction
             if ff_left is not None and ff_right is not None:
-                self.road_direction = self.estimate_road_direction(ff_left, ff_right, (h, w), odom_m)
+                self.road_direction = self.estimate_road_direction(ff_left, ff_right, (h, w), odom_m, image_dep)
             
             # Follow lane with road alignment
             status_text = 'CUSTOM'
