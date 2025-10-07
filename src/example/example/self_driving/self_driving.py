@@ -99,6 +99,7 @@ class SelfDrivingNode(Node):
         self.turn = False
         self.detect = True
         self.turn_right = False
+        self.real_turn_right = False
 
         self.go_cw = True
         self.detected_cw = False
@@ -111,6 +112,7 @@ class SelfDrivingNode(Node):
         self.right_distance = 0
         self.sign_distance = 0
         self.fence_distance = 0
+        self.park_distance = 0
 
         self.count_turn = 0
         self.start_turn = False  # start to turn
@@ -390,7 +392,24 @@ class SelfDrivingNode(Node):
                             # self.get_logger().info(f"\033[1;31m1. self.detected_cw: {self.detected_cw}\033[0m")
                             # self.get_logger().info(f"\033[1;31m2. detect sign: {self.traffic_signs_status} {self.detected_go} {self.detected_right}\033[0m")
                             # self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance}\033[0m")
-                            if self.detected_cw and self.go_cw:
+                            self.get_logger().info(f"\033[1;31mdetected right: {self.detected_right}, detected: {self.detected_cw}\033[0m")
+                            if self. real_turn_right:
+                                self.go_cw = False
+                                self.turn_right = True
+                                self.start_dist = self.cw_distance
+                                self.mul = 1.3
+                                self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
+                            elif self.detected_right and self.detected_cw:
+                                self.go_cw = False
+                                self.real_turn_right = True
+                                self.start_dist = self.cw_distance
+                                self.mul = 1.3
+                                self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
+                            elif self.detected_park:
+                                self.start_dist = self.park_distance
+                                self.mul = 1.0
+                                self.get_logger().info(f"\033[1;31mpark distance: {self.start_dist}\033[0m")
+                            elif self.detected_cw and self.go_cw:
                                 self.go_cw = False
                                 self.start_dist = self.cw_distance
                                 self.mul = 1.3
@@ -432,7 +451,7 @@ class SelfDrivingNode(Node):
                             self.pid.SetPoint = 200  # the coordinate of the line while the robot is in the middle of the lane
                             self.pid.update(left_lane_x)
                             if self.machine_type != 'MentorPi_Acker':
-                                twist.angular.z = common.set_range(self.pid.output, -0.15, 0.15)
+                                twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
                             else:
                                 twist.angular.z = twist.linear.x * math.tan(common.set_range(self.pid.output, -0.1, 0.1)) / 0.145
 
@@ -516,6 +535,7 @@ class SelfDrivingNode(Node):
                 self.cw_distance = -1
                 self.right_distance = -1
                 self.sign_distance = -1
+                self.park_distance = -1
 
                 self.detected_cw = False
                 self.detected_go = False
@@ -526,6 +546,7 @@ class SelfDrivingNode(Node):
                     self.cw_distance = -1
                     self.right_distance = -1
                     self.sign_distance = -1
+                    self.park_distance = -1
 
                     self.detected_cw = False
                     self.detected_go = False
@@ -549,11 +570,12 @@ class SelfDrivingNode(Node):
                             self.detected_go = True
                             self.sign_distance = obj_distance
                         elif class_name == 'right':  # obtain the right turning sign
-                            self.detected_cw = True
+                            self.detected_right = True
                             self.right_distance = obj_distance
                             self.sign_distance = obj_distance
                         elif class_name == 'park':  # obtain the center coordinate of the parking sign
                             self.detected_park = True
+                            self.park_distance = obj_distance
                         elif class_name == 'red':
                             self.traffic_signs_status = 'red'
                             self.sign_distance = obj_distance
