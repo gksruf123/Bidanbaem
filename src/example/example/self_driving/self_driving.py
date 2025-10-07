@@ -446,7 +446,7 @@ class SelfDrivingNode(Node):
                             self.basis_turn_point = self.degree      # 현재 기준 시작 각도 지정
                         
                         self.get_logger().info(f"\033[1;31minitial degree: {self.basis_turn_point}, cur degree: {self.degree}\033[0m")
-                        if abs(self.basis_turn_point - self.degree) > 80:
+                        if abs((self.basis_turn_point - self.degree + 180) % 360 - 180) > 80:
                             self.get_logger().info("turn was finished~~~~~~~~~~~~~~")
                             self.turn_finish = True
                             # self.detected_cw = False
