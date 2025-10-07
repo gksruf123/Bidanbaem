@@ -266,7 +266,7 @@ class LaneDetector(object):
         # has_right = count_pix > threshold
         # 권장 대안:
         rows_touched = int(np.count_nonzero(blob_right.any(axis=1)))
-        has_right = rows_touched >= int((roi_right[1]-roi_right[0]) * 0.25)
+        has_right = rows_touched >= int((roi_right[1]-roi_right[0]) * 0.15)
 
         if lane_x is not None:
             scale_x = result_image.shape[1] / float(w)

@@ -194,7 +194,7 @@ class SelfDrivingNode(Node):
         self.signal_window = 2.0        # 정지선에서 yolo 켜고 기다릴 시간
         self.signal_deadline = 0.0
         self.red_hold = False           # 빨간불 봤을 때 초록불 나올 때까지 대기하는 플래그
-        self.max_red_wait = 7.0         # 빨간불 대기 최대 (혹시 몰라서. 없어도 됨.)
+        self.max_red_wait = 10.0         # 빨간불 대기 최대 (혹시 몰라서. 없어도 됨.)
 
     def get_node_state(self, request, response):
         response.success = True
@@ -525,7 +525,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.30, 0.50
+                        NEAR, FAR = 0.10, 0.30
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
