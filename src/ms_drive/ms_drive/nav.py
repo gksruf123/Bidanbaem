@@ -473,7 +473,6 @@ class Navigation(Node):
         ff_left = None
         ff_right = None
         ff_right_far = None
-
         if seedpoint_l:
             ff_left = self.ff_mask(mask, seedpoint_l) # since FF_MASK_ONLY, perhaps just give mask instead of copying over.
         if seedpoint_r:
