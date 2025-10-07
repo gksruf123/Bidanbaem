@@ -183,8 +183,8 @@ class SelfDrivingNode(Node):
         self.crosswalk_length = 0.1 + 0.3  # the length of zebra crossing and the robot
 
         self.start_slow_down = False  # slowing down sign
-        self.normal_speed = 0.2  # normal driving speed
-        self.slow_down_speed = 0.1  # slowing down speed
+        self.normal_speed = 0.5  # normal driving speed
+        self.slow_down_speed = 0.3  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
         self.red_loss_count = 0
@@ -198,7 +198,7 @@ class SelfDrivingNode(Node):
         self.depth_stamp = None
         self.avoid_until = 0.0
         self.dmin_ema = None        # d_min 평활화용
-        self.min_wall_speed = 0.1
+        self.min_wall_speed = 0.3
         self.last_avoid_s = 0.0
 
         self.last_stop_time = 0     # 횡단보도 마지막에 멈췄던 시간 체크용
@@ -390,7 +390,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.10, 0.30
+                        NEAR, FAR = 0.20, 0.40
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
@@ -415,7 +415,7 @@ class SelfDrivingNode(Node):
                                 s = max(self.last_avoid_s, 0.15)   # 최소한의 회피 유지(필요시 0.10~0.20 튜닝)
 
                             # === 가변 조향 ===
-                            twist.angular.z = -0.5 - 0.6 * s      # -0.2 ~ -0.8 근처
+                            twist.angular.z = -0.8 - 0.6 * s      # -0.2 ~ -0.8 근처
 
                             # === 가변 선속도 ===
                             v_min = self.min_wall_speed           # 예: 0.05
@@ -431,7 +431,7 @@ class SelfDrivingNode(Node):
                         s = max(self.last_avoid_s, 0.15)
 
                         twist = Twist()
-                        twist.angular.z = -0.2 - 0.6 * s
+                        twist.angular.z = -0.8 - 0.6 * s
                         v_min = self.min_wall_speed
                         v_max = self.normal_speed
                         twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
@@ -487,18 +487,22 @@ class SelfDrivingNode(Node):
 
                 # line following processing
                     result_image, status, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
-                    x_setpoint = int(w * 0.20) # 화면 중앙에서 살짝 왼쪽.
-                    angle_setpoint = 80
+                    x_setpoint = int(w * 0.30) # 화면 중앙에서 살짝 왼쪽.
+                    angle_setpoint = 40
+
+                    frame_per_sec = 1 / (time.time() - self.crt_time)
+                    self.crt_time = time.time()
+                    self.get_logger().info(f'\033[1;31m{frame_per_sec}\033[0m')
 
                     if status == "GO_STRAIGHT":
                         pos_error = lane_x - x_setpoint
                         angle_error = lane_angle - angle_setpoint
-                        total_error = 0.7*pos_error + 0.3*angle_error
+                        total_error = 0.8*pos_error + 0.2*angle_error
 
                         self.pid.SetPoint = 0
                         self.pid.update(total_error)
                         twist.linear.x = self.normal_speed
-                        twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
+                        twist.angular.z = common.set_range(self.pid.output, -0.3, 0.3)
                         self.get_logger().info(f"pos_error={pos_error:.2f}, angle_error={angle_error:.2f}, total={total_error:.2f}")
                         self.mecanum_pub.publish(twist)
 
@@ -524,7 +528,7 @@ class SelfDrivingNode(Node):
                     
                     elif status is None:
                         twist.linear.x = self.slow_down_speed
-                        twist.angular.z = 0.0
+                        twist.angular.z = 0.2
                         self.mecanum_pub.publish(twist)
                     
                     else:
