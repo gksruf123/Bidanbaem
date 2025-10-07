@@ -231,13 +231,13 @@ class LaneDetector(object):
 
                 out[roi_left[0]:roi_left[1], roi_left[2]:roi_left[3]] = roi_hough
 
-        # (선택) thinning
-        try:
-            thinned = cv2.ximgproc.thinning(out, thinningType=cv2.ximgproc.THINNING_GUOHALL)
-        except Exception:
-            thinned = out
+        # # (선택) thinning
+        # try:
+        #     thinned = cv2.ximgproc.thinning(out, thinningType=cv2.ximgproc.THINNING_GUOHALL)
+        # except Exception:
+        #     thinned = out
 
-        return thinned
+        return out
 
 
     def __call__(self, image, result_image):

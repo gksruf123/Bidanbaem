@@ -609,10 +609,9 @@ class SelfDrivingNode(Node):
                     
                     # 아무것도 안 보이면 천천히 왼쪽으로 돌면서 차선 찾기
                     elif status is None:
-                        self._drive_straight(lane_x, lane_angle, x_setpoint, angle_setpoint, twist)
-                        # twist.linear.x = self.slow_down_speed
-                        # twist.angular.z = 0.2
-                        # self.mecanum_pub.publish(twist)
+                        twist.linear.x = self.normal_speed
+                        twist.angular.z = 0.0
+                        self.mecanum_pub.publish(twist)
                     
                     else:
                         self.pid.clear()
