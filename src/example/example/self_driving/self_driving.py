@@ -100,6 +100,7 @@ class SelfDrivingNode(Node):
         self.detect = True
         self.turn_right = False
 
+        self.go_cw = True
         self.detected_cw = False
         self.detected_go = False
         self.detected_right = False
@@ -389,15 +390,29 @@ class SelfDrivingNode(Node):
                             # self.get_logger().info(f"\033[1;31m1. self.detected_cw: {self.detected_cw}\033[0m")
                             # self.get_logger().info(f"\033[1;31m2. detect sign: {self.traffic_signs_status} {self.detected_go} {self.detected_right}\033[0m")
                             # self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance}\033[0m")
-                            if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
+                            if self.detected_cw and self.go_cw:
+                                self.go_cw = False
                                 self.start_dist = self.cw_distance
                                 self.mul = 1.3
                                 self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
-                            else:
+                            elif self.traffic_signs_status != 'red':
+                                self.go_cw = True
                                 self.turn_right = True
                                 self.start_dist = self.fence_distance
-                                self.mul = 1.3
+                                self.mul = 1.1
                                 self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
+                            else:
+                                self.get_logger().info("RED-RED-RED-RED-RED-RED-RED-RED")
+                                continue
+                            # if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
+                            #     self.start_dist = self.cw_distance
+                            #     self.mul = 1.3
+                            #     self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
+                            # else:
+                            #     self.turn_right = True
+                            #     self.start_dist = self.fence_distance
+                            #     self.mul = 1.3
+                            #     self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
 
                             self.start_count += 1
                             self.basis_start_point_x, self.basis_start_point_y = self.position_x, self.position_y
@@ -429,7 +444,8 @@ class SelfDrivingNode(Node):
                         if self.turn_count == 0:
                             self.turn_count += 1
                             self.basis_turn_point = self.degree      # 현재 기준 시작 각도 지정
-
+                        
+                        self.get_logger().info(f"\033[1;31minitial degree: {self.basis_turn_point}, cur degree: {self.degree}\033[0m")
                         if abs(self.basis_turn_point - self.degree) > 80:
                             self.get_logger().info("turn was finished~~~~~~~~~~~~~~")
                             self.turn_finish = True
