@@ -1,14 +1,31 @@
-from launch import LaunchDescription
-from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription, LaunchService
+from launch_ros.actions import Node
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
 import os
 
-def generate_launch_description():
-    pkg_share = get_package_share_directory('ms_drive')
 
-    slam_params = os.path.join(pkg_share, 'config', 'slam_toolbox_params.yaml')
-    ekf_params = os.path.join(pkg_share, 'config', 'ekf.yaml')
+def generate_launch_description():
+    
+    compiled = os.environ['need_compile']
+    if compiled == 'True':
+        peripherals_package_path = get_package_share_directory('peripherals')
+        controller_package_path = get_package_share_directory('controller')
+        package_share_directory = get_package_share_directory('ms_drive')
+        navigation_package_path = get_package_share_directory('nav2_bringup')
+        bringup_package_path = get_package_share_directory('bringup')
+    else:
+        peripherals_package_path = '/home/ubuntu/ros2_ws/src/peripherals'
+        controller_package_path = '/home/ubuntu/ros2_ws/src/driver/controller'
+        package_share_directory = '/home/ubuntu/ros2_ws/src/ms_drive'
+        navigation_package_path = '/home/ubuntu/ros2_ws/src/nav2_bringup'
+        bringup_package_path = '/home/ubuntu/ros2_ws/src/bringup'
+
+    package_share_directory = get_package_share_directory('ms_drive')
+
+    slam_params = os.path.join(package_share_directory, 'config', 'slam_toolbox_params.yaml')
+    ekf_params = os.path.join(package_share_directory, 'config', 'ekf.yaml')
 
     return LaunchDescription([
         # 1️⃣ SLAM Toolbox
@@ -19,6 +36,23 @@ def generate_launch_description():
             output='screen',
             parameters=[slam_params]
         ),
+        # Node(
+        #     package='slam_toolbox',
+        #     executable='sync_slam_toolbox_node',
+        #     name='slam_toolbox',
+        #     output='screen',
+        #     parameters=[{
+        #         'use_sim_time': False,
+        #         'base_frame': 'base_link',
+        #         'odom_frame': 'odom',
+        #         'map_frame': 'map',
+        #         'scan_topic': '/scan_raw',
+        #         'mode': 'localization',  # Change to 'localization' for pure odometry
+        #         'do_loop_closing': True,
+        #         'resolution': 0.05,
+        #         'publish_map_transform': True,
+        #     }]
+        # ),
 
         # 2️⃣ EKF localization (fuse wheel + laser)
         Node(
@@ -30,13 +64,18 @@ def generate_launch_description():
         ),
 
         # 3️⃣ RViz visualization
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
-            output='screen',
-            arguments=['-d', os.path.join(pkg_share, 'config', 'slam_nav.rviz')],
-            condition=None  # optional if you have rviz config
+        # Node(
+        #     package='rviz2',
+        #     executable='rviz2',
+        #     name='rviz2',
+        #     output='screen',
+        #     arguments=['-d', os.path.join(package_share_directory, 'config', 'slam_nav.rviz')],
+        #     condition=None  # optional if you have rviz config
+        # ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(bringup_package_path, 'launch', 'bringup.launch.py')
+            )
         ),
     ])
 

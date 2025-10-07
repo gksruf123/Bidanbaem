@@ -458,10 +458,6 @@ class Navigation(Node):
                 count = 0
             self.detects[name] = {'box':points, 'count':count}
 
-        
-        
-            
-
     def direct(self, rgb_m, dep_m, odom_m:Odometry):
         # self.print_odom(odom_m)
         self.proc(rgb_m, dep_m, odom_m)
@@ -520,9 +516,9 @@ class Navigation(Node):
         image_bgr = self.cv_bridge.imgmsg_to_cv2(rgb_m, 'bgr8')
         image_dep = self.cv_bridge.imgmsg_to_cv2(dep_m, '16UC1')
 
-        if (tmp := self.odom_mapper.get_odom_msg()):
-            odom_m = tmp
-            self.print_odom(odom_m)
+        # if (tmp := self.odom_mapper.get_odom_msg()):
+        #     odom_m = tmp
+        #     self.print_odom(odom_m)
 
         oh, ow = image_bgr.shape[:2]
         scale = 1/4
@@ -554,33 +550,33 @@ class Navigation(Node):
         # Convert mask to BGR for visualization
         out = cv2.cvtColor(mask_lab, cv2.COLOR_GRAY2BGR)
 
-        self.get_logger().info(f'stat: {self.status}')
-        if not self.status == Status.stopped | Status.arrived | Status.init: ## only find target when stopped or arrived somewhere
-            return
+        # self.get_logger().info(f'stat: {self.status}')
+        # if not self.status == Status.stopped | Status.arrived | Status.init: ## only find target when stopped or arrived somewhere
+        #     return
         
-        if self.status == Status.init:
-            # init logic
-            if not self.detects['green'].count:
-                return
+        # if self.status == Status.init:
+        #     # init logic
+        #     if not self.detects['green'].count:
+        #         return
                 
         
-        if self.status == Status.scanning:
-            # do scan logic
-            # are we in front of crosswalk or right turn? 
-            green = self.detects['green']
-            go = self.detects['go']
-            if green.count or go.count: # good to go 
-                pass
-            else:
-                return
+        # if self.status == Status.scanning:
+        #     # do scan logic
+        #     # are we in front of crosswalk or right turn? 
+        #     green = self.detects['green']
+        #     go = self.detects['go']
+        #     if green['count'] or go['count']: # good to go 
+        #         pass
+        #     else:
+        #         return
         
         # Find target point between lanes
         if seedpoint_l and seedpoint_r:
-            if ff_left == ff_right: #not sure if this will work, find a way to compare ff masks
+            if np.array_equal(ff_left, ff_right): #not sure if this will work, find a way to compare ff masks
                 pass # we're presumably doing a right turn.
             else:
                 _step = 5
-                _y = h//4
+                _y = h//2
                 while _y < h-1:
                     ll = np.where(ff_left[_y, :] > 0)[0]
                     lr = np.where(ff_right[_y, :] > 0)[0]
@@ -679,6 +675,7 @@ class Navigation(Node):
             
             # Follow lane with road alignment
             status_text = 'CUSTOM'
+            # time.sleep(5)
             self.goto(self.current_target[0], self.current_target[1], odom_m)
             # if self.road_direction is not None:
             #     target_reached = self.follow_lane_with_alignment(

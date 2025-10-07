@@ -13,7 +13,7 @@ slam_toolbox:
     scan_buffer_size: 10
     scan_buffer_maximum_scan_distance: 10.0
 
-    do_loop_closing: true
+    do_loop_closing: false
     do_covariance_estimation: true
     loop_search_maximum_distance: 3.0
     loop_match_minimum_chain_size: 10
