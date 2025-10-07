@@ -168,7 +168,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.1  # normal driving speed
+        self.normal_speed = 0.2  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -609,9 +609,10 @@ class SelfDrivingNode(Node):
                     
                     # 아무것도 안 보이면 천천히 왼쪽으로 돌면서 차선 찾기
                     elif status is None:
-                        twist.linear.x = self.slow_down_speed
-                        twist.angular.z = 0.2
-                        self.mecanum_pub.publish(twist)
+                        self._drive_straight(lane_x, lane_angle, x_setpoint, angle_setpoint, twist)
+                        # twist.linear.x = self.slow_down_speed
+                        # twist.angular.z = 0.2
+                        # self.mecanum_pub.publish(twist)
                     
                     else:
                         self.pid.clear()
