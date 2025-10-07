@@ -169,35 +169,35 @@ class MSMDriver(Node):
                 self.stop()
             return
             
-        # cmd_vel = Twist()
-        # dx = target.x - pos.x
-        # dy = target.y - pos.y
-        # dist_squared = dx*dx + dy*dy  # Use squared distance for comparison
-        # self.current_theta = yaw_from_quaternion(ori)
+        cmd_vel = Twist()
+        dx = target.x - pos.x
+        dy = target.y - pos.y
+        dist_squared = dx*dx + dy*dy  # Use squared distance for comparison
+        self.current_theta = yaw_from_quaternion(ori)
 
-        # if not self.reached_target():
-        #     # Calculate direction vector and normalize
-        #     distance = math.sqrt(dist_squared)
-        #     direction_x = dx / distance
-        #     direction_y = dy / distance
+        if not self.reached_target():
+            # Calculate direction vector and normalize
+            distance = math.sqrt(dist_squared)
+            direction_x = dx / distance
+            direction_y = dy / distance
             
-        #     # Scale by max speed
-        #     speed = min(self.max_linear_speed, distance * 1.0)  # Simple P-control
-        #     cmd_vel.linear.x = direction_x * speed
-        #     cmd_vel.linear.y = direction_y * speed
+            # Scale by max speed
+            speed = min(self.max_linear_speed, distance * 1.0)  # Simple P-control
+            cmd_vel.linear.x = direction_x * speed
+            cmd_vel.linear.y = direction_y * speed
             
-        #     # Limit strafe speed
-        #     if abs(cmd_vel.linear.y) > self.max_strafe_speed:
-        #         cmd_vel.linear.y = math.copysign(self.max_strafe_speed, cmd_vel.linear.y)
+            # Limit strafe speed
+            if abs(cmd_vel.linear.y) > self.max_strafe_speed:
+                cmd_vel.linear.y = math.copysign(self.max_strafe_speed, cmd_vel.linear.y)
         
-        # desired_angle = math.atan2(dy, dx)
-        # angle_delta = self.normalize_angle(desired_angle - self.current_theta)
+        desired_angle = math.atan2(dy, dx)
+        angle_delta = self.normalize_angle(desired_angle - self.current_theta)
         
-        # # Angular control with speed limiting
-        # angular_cmd = 1.2 * angle_delta
-        # cmd_vel.angular.z = max(-self.max_angular_speed, min(self.max_angular_speed, angular_cmd))
+        # Angular control with speed limiting
+        angular_cmd = 1.2 * angle_delta
+        cmd_vel.angular.z = max(-self.max_angular_speed, min(self.max_angular_speed, angular_cmd))
 
-        # self.set_target_speed(tw=cmd_vel)
+        self.set_target_speed(tw=cmd_vel)
 
     def limit(self, cur, targ, max_accel, dt):
         delta = targ - cur

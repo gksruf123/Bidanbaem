@@ -4,6 +4,7 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 import os
+from launch.actions import TimerAction
 
 
 def generate_launch_description():
@@ -30,11 +31,23 @@ def generate_launch_description():
     return LaunchDescription([
         # 1️⃣ SLAM Toolbox
         Node(
-            package='slam_toolbox',
-            executable='async_slam_toolbox_node',
-            name='slam_toolbox',
+            package='ms_drive',
+            executable='lidar_fixed',
+            name='lider_fixed',
             output='screen',
-            parameters=[slam_params]
+        ),
+                
+        TimerAction(
+            period=8.0,  # or 5.0 if your LiDAR spins slowly
+            actions=[
+                Node(
+                    package='slam_toolbox',
+                    executable='async_slam_toolbox_node',
+                    name='slam_toolbox',
+                    output='screen',
+                    parameters=[slam_params],
+                )
+            ]
         ),
         # Node(
         #     package='slam_toolbox',

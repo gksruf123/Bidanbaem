@@ -1,10 +1,10 @@
 slam_toolbox:
   ros__parameters:
     use_sim_time: false
-    map_update_interval: 5.0
+    map_update_interval: 1000.0
     max_laser_range: 10.0
     resolution: 0.05
-    scan_msg_expected_ranges: 0  # 0 = accept variable size
+    scan_msg_expected_ranges: 503  # 0 = accept variable size
 
     use_scan_matching: true
     use_scan_barycenter: false
@@ -19,7 +19,7 @@ slam_toolbox:
     loop_match_minimum_chain_size: 10
     loop_match_maximum_variance_coefficient: 1.0
 
-    scan_topic: /scan_raw
+    scan_topic: /scan_fixed
     base_frame: base_link
     odom_frame: odom
     map_frame: map

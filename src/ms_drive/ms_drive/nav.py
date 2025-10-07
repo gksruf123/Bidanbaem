@@ -220,16 +220,16 @@ class Navigation(Node):
         self.last_target_persist_time = 3.0  # How long to keep using last target (seconds)
         
         # Control parameters for mecanum with road alignment
-        self.max_linear_speed = 0.3
-        self.max_strafe_speed = 0.2
+        self.max_linear_speed = 0.8
+        self.max_strafe_speed = self.max_linear_speed * 0.7
         self.max_angular_speed = 1.0
         self.position_tolerance = 0.15
         self.lateral_tolerance = 0.08
         self.heading_tolerance = 0.025
         self.target_angle = None
 
-        self.turn_speed = 0.3
-        self.turn_radius = 0.4
+        self.turn_speed = 0.5
+        self.turn_radius = 0.15
         
         # PID gains
         self.kp_forward = 0.6
@@ -242,15 +242,16 @@ class Navigation(Node):
 
         self.yolov5_start_client = self.create_client(Trigger, '/yolov5/start')
         self.yolov5_stop_client = self.create_client(Trigger, '/yolov5/stop')
-        # self.yolov5_start_client.wait_for_service() ### disable for debug
-        # self.yolov5_stop_client.wait_for_service()
-        # self.activate_yolo()
+        self.yolov5_start_client.wait_for_service() ### disable for debug
+        self.yolov5_stop_client.wait_for_service()
+        self.activate_yolo()
 
         self.create_service(Trigger, '/ms_driver/arrived', self.arrive_srv_cb)
         self.wheel_pub = self.create_publisher(Twist, '/controller/cmd_vel', 1)
         self.logic_pub = self.create_publisher(Point, '/ms_logic', 1)
         """Point, Linear Z 0.0 means target, alignment otherwise"""
         self.timer = self.create_timer(0.0, self.init_process)
+        self.loop = self.create_timer(0.0125, self.target_loop)
 
         self.detects = defaultdict(default_detect)
         """[name]: {box, count}"""
@@ -362,6 +363,74 @@ class Navigation(Node):
             self.last_arrived = time.time()
         return forward_distance <= 0.05
 
+    def target_loop(self):
+        # print(time.time())
+        if not self.current_target:
+            return
+            
+        if not (odom := self.odom_mapper.get_odom_msg()):
+            return
+        target_x, target_y = self.current_target[0], self.current_target[1]
+        # print('goto', is_cw, self.target_angle)
+        if target_x is None or target_y is None:
+            return False
+
+        current_pos = odom.pose.pose.position
+        current_ori = odom.pose.pose.orientation
+
+        current_x = current_pos.x
+        current_y = current_pos.y
+        current_yaw = yaw_from_quaternion(current_ori)
+
+        # World-frame vector to target
+        dx_world = target_x - current_x
+        dy_world = target_y - current_y
+
+        # Transform to robot frame
+        dx_robot = dx_world * math.cos(current_yaw) + dy_world * math.sin(current_yaw)
+        dy_robot = -dx_world * math.sin(current_yaw) + dy_world * math.cos(current_yaw)
+
+        # Compute distance along robot's forward direction
+        forward_distance = dx_robot
+        # if is_cw:
+        #     forward_distance -= 0.15
+
+        # Only move forward if we haven't reached the stopping distance
+        forward_speed = 0.0
+        if forward_distance > 0.05:  # small threshold
+            # forward_speed = self.kp_forward * min(forward_distance, 0.5)
+            # forward_speed = min(forward_speed, self.max_linear_speed)
+            forward_speed = self.max_linear_speed
+
+        # Strafe speed
+        strafe_speed = dy_robot
+        strafe_speed = max(min(strafe_speed, self.max_strafe_speed), -self.max_strafe_speed)
+
+        # Heading correction toward target angle
+        heading_error = self.target_angle - current_yaw
+        while heading_error > math.pi:
+            heading_error -= 2 * math.pi
+        while heading_error < -math.pi:
+            heading_error += 2 * math.pi
+
+        angular_correction = 0.0
+        if abs(heading_error) > 0.025:
+            angular_correction = self.kp_heading * heading_error
+            angular_correction = max(min(angular_correction, self.max_angular_speed), -self.max_angular_speed)
+
+        # Publish velocities
+        cmd_vel = Twist()
+        cmd_vel.linear.x = forward_speed
+        cmd_vel.linear.y = strafe_speed
+        cmd_vel.angular.z = angular_correction
+        self.wheel_pub.publish(cmd_vel)
+
+        # Return True if we reached stopping distance
+        if forward_distance <= 0.05:
+            self.last_arrived = time.time()
+            # self.current_target = None
+        return forward_distance <= 0.05
+
     def should_use_last_target(self, current_time):
         """Check if we should use the last target point"""
         if self.last_target_point is None:
@@ -397,13 +466,16 @@ class Navigation(Node):
 
     def send_request(self, client, msg):
         future = client.call_async(msg)
-        while rclpy.ok():
-            if future.done() and future.result():
-                return future.result()
+    
+        # Spin until future is complete
+        rclpy.spin_until_future_complete(self, future)
+        
+        return future.result()  # safe to get result now
 
     def activate_yolo(self):
+        self.get_logger().info('activate yolo')
         self.send_request(self.yolov5_start_client, Trigger.Request())
-        self.yolo5_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.yolo_cb, 1)
+        self.yolo5_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.yolo_cb, 10)
 
     def deactivate_yolo(self):
         self.yolo5_sub.destroy()
@@ -411,6 +483,7 @@ class Navigation(Node):
         self.detects.clear()
 
     def yolo_cb(self, msg:ObjectsInfo):
+        self.get_logger().info('yolo cb')
         objects = msg.objects
         if not self.status == Status.scanning:
             self.get_logger().warn(f'yolo callback when status is not scanning, {self.status}')
@@ -426,6 +499,11 @@ class Navigation(Node):
             else:
                 count = 0
             self.detects[name] = {'box':points, 'count':count}
+
+        print(self.detects)
+        if self.detects['right']['count'] > 3:
+            self.get_logger().info('deactivate yolo')
+            self.deactivate_yolo()
 
     def direct(self, rgb_m, dep_m, odom_m:Odometry):
         # self.print_odom(odom_m)
@@ -575,18 +653,18 @@ class Navigation(Node):
         #         return
         
         # Find target point between lanes
-        if ff_left is not None:
-            cv2.imshow('ll', ff_left)
-        if ff_right is not None:
-            cv2.imshow('rl', ff_right)
-        if ff_right_far is not None:
-            cv2.imshow('rl_f', ff_right_far)
+        # if ff_left is not None:
+        #     cv2.imshow('ll', ff_left)
+        # if ff_right is not None:
+        #     cv2.imshow('rl', ff_right)
+        # if ff_right_far is not None:
+        #     cv2.imshow('rl_f', ff_right_far)
         if seedpoint_l and seedpoint_r:
-            if np.array_equal(ff_left, ff_right): #not sure if this will work, find a way to compare ff masks
-                # print('hmm')
+            if np.array_equal(ff_left, ff_right): 
                 pass # we're presumably doing a right turn.
                 ##DO_RIGHT_TURN_LOGIC
                 # self.target_angle += 90
+                self.current_target = None
                 self.turn_right(odom_m)
                 # self.stop_movement()
                 return
@@ -662,6 +740,12 @@ class Navigation(Node):
                 self.last_target_point = (odom_point.x, odom_point.y)  # Store for future use
                 self.last_target_time = current_time
                 target_source = "NEW TARGET"
+
+                self.get_logger().info('publish target')
+                pnt = Point()
+                pnt.x = self.current_target[0]
+                pnt.y = self.current_target[1]
+                self.logic_pub.publish(pnt)
                 
         # elif self.should_use_last_target(current_time) and self.last_target_point:
         #     # Use last target point (no new target found but within timeout)
@@ -694,7 +778,7 @@ class Navigation(Node):
             # Follow lane with road alignment
             status_text = 'CUSTOM'
             # time.sleep(5)
-            self.goto(self.current_target[0], self.current_target[1], odom_m, ff_right_far is not None)
+            # self.goto(self.current_target[0], self.current_target[1], odom_m, ff_right_far is not None)
             # if self.last_arrived + 5 < time.time():
 
             # if self.road_direction is not None:

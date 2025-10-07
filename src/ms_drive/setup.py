@@ -34,7 +34,8 @@ setup(
             'nav=ms_drive.nav:main',
             'odom_bridge=ms_drive.odom_tf_bridge:main',
             'p2odom=ms_drive.p2odom:main',
-            'driver=ms_drive.driver:main'
+            'driver=ms_drive.driver:main',
+            'lidar_fixed=ms_drive.lidar_fixed:main'
         ],
     },
 )
