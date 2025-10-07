@@ -607,6 +607,7 @@ class SelfDrivingNode(Node):
                         self._enter_signal_wait()
                         continue
                     
+                    # 아무것도 안 보이면 천천히 왼쪽으로 돌면서 차선 찾기
                     elif status is None:
                         twist.linear.x = self.slow_down_speed
                         twist.angular.z = 0.2
@@ -626,8 +627,7 @@ class SelfDrivingNode(Node):
 
             self.result_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
 
-            if 'binary_image' in locals():
-                self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(binary_image, "mono8"))
+            self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(binary_image, "mono8"))
             # 이건 나중에 삭제하기. rqt로 이진화 차선 확인하려고 만든 거니까.
 
            
