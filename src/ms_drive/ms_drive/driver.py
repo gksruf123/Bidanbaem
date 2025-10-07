@@ -11,12 +11,57 @@ from cv_bridge import CvBridge
 from nav_msgs.msg import Odometry
 from rclpy.qos import qos_profile_sensor_data, QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 import queue
+import tf2_ros
+import tf2_geometry_msgs
+from geometry_msgs.msg import PointStamped, TransformStamped
+
+
+class MapOdomWrapper:
+    def __init__(self, node):
+        self.node = node
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, node)
+    
+    def get_odom_msg(self):
+        try:
+            # Lookup the latest transform from SLAM map frame to base_link
+            t: TransformStamped = self.tf_buffer.lookup_transform(
+                'map',      # target frame
+                'base_link',# source frame
+                rclpy.time.Time()
+            )
+            odom_msg = Odometry()
+            odom_msg.header.stamp = self.node.get_clock().now().to_msg()
+            odom_msg.header.frame_id = 'map'
+            odom_msg.child_frame_id = 'base_link'
+            
+            # Fill position
+            odom_msg.pose.pose.position.x = t.transform.translation.x
+            odom_msg.pose.pose.position.y = t.transform.translation.y
+            odom_msg.pose.pose.position.z = t.transform.translation.z
+            
+            # Fill orientation
+            odom_msg.pose.pose.orientation = t.transform.rotation
+
+            # You can optionally zero velocities or compute from tf if needed
+            odom_msg.twist.twist.linear.x = 0.0
+            odom_msg.twist.twist.linear.y = 0.0
+            odom_msg.twist.twist.linear.z = 0.0
+            odom_msg.twist.twist.angular.x = 0.0
+            odom_msg.twist.twist.angular.y = 0.0
+            odom_msg.twist.twist.angular.z = 0.0
+
+            return odom_msg
+        except Exception as e:
+            return None
+
 
 class MSMDriver(Node):
     def __init__(self, name='ms_driver'):
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
         self.name = name
         self.is_running = True
+        self.odom_mapper = MapOdomWrapper(self)
 
         qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -102,6 +147,8 @@ class MSMDriver(Node):
             cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
             return math.atan2(siny_cosp, cosy_cosp)
             
+        if (tmp := self.odom_mapper.get_odom_msg()):
+            msg_odom = tmp
         self.odom = msg_odom
         # pose = msg_odom.pose.pose
         pos = self.pos

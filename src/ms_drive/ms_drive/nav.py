@@ -41,6 +41,18 @@ class Status(IntEnum):
 def default_detect():
     return {'count':0, 'box': [0.0]*4}
 
+class AngleSnapper:
+    def __init__(self, initial_angle_rad: float):
+        """Store the reference angle."""
+        self.initial_angle = initial_angle_rad
+
+    def snap(self, angle_rad: float) -> float:
+        """Snap the given angle to the nearest 90° increment (π/2) from the initial angle."""
+        delta = angle_rad - self.initial_angle
+        snapped_delta = round(delta / (math.pi / 2)) * (math.pi / 2)
+        return self.initial_angle + snapped_delta
+
+
 class PixelToOdomTransformer:
     def __init__(self, node):
         self.node = node
@@ -208,17 +220,24 @@ class Navigation(Node):
         self.last_target_persist_time = 3.0  # How long to keep using last target (seconds)
         
         # Control parameters for mecanum with road alignment
-        self.max_linear_speed = 0.5
-        self.max_strafe_speed = 0.5
-        self.max_angular_speed = 0.2
+        self.max_linear_speed = 0.3
+        self.max_strafe_speed = 0.2
+        self.max_angular_speed = 1.0
         self.position_tolerance = 0.15
         self.lateral_tolerance = 0.08
-        self.heading_tolerance = 0.5
+        self.heading_tolerance = 0.025
+        self.target_angle = None
+
+        self.turn_speed = 0.3
+        self.turn_radius = 0.4
         
         # PID gains
         self.kp_forward = 0.6
         self.kp_strafe = 0.8
         self.kp_heading = 1.0
+
+        self.last_arrived = time.time()
+        self.last_target_found = 0
 
 
         self.yolov5_start_client = self.create_client(Trigger, '/yolov5/start')
@@ -283,115 +302,65 @@ class Navigation(Node):
         
         return None
 
-    def follow_lane_with_alignment(self, target_x, target_y, road_direction, current_odom):
-        """
-        Follow lane while aligning robot heading with road direction
-        """
-        if target_x is None or target_y is None or road_direction is None:
-            return False
-
-        current_pos = current_odom.pose.pose.position
-        current_ori = current_odom.pose.pose.orientation
-        
-        current_x = current_pos.x
-        current_y = current_pos.y
-        current_yaw = yaw_from_quaternion(current_ori)
-        
-        # Calculate errors in robot frame
-        dx_world = target_x - current_x
-        dy_world = target_y - current_y
-        
-        # Transform world errors to robot frame
-        dx_robot = dx_world * math.cos(current_yaw) + dy_world * math.sin(current_yaw)
-        dy_robot = -dx_world * math.sin(current_yaw) + dy_world * math.cos(current_yaw)
-        
-        lateral_error = dy_robot
-        forward_error = dx_robot
-        
-        # Calculate heading error (difference between current and road direction)
-        heading_error = road_direction - current_yaw
-        
-        # Normalize heading error to [-pi, pi]
-        while heading_error > math.pi:
-            heading_error -= 2 * math.pi
-        while heading_error < -math.pi:
-            heading_error += 2 * math.pi
-        
-        cmd_vel = Twist()
-        
-        # Check if target is reached
-        if (abs(lateral_error) < self.lateral_tolerance and 
-            abs(forward_error) < self.position_tolerance and
-            abs(heading_error) < self.heading_tolerance):
-            self.get_logger().info("Perfectly aligned with road!")
-            self.wheel_pub.publish(cmd_vel)
-            return True
-        
-        # Control strategy: Prioritize road alignment, then lateral position
-        if abs(heading_error) > self.heading_tolerance:
-            # First, align with road direction
-            angular_speed = self.kp_heading * heading_error
-            angular_speed = max(min(angular_speed, self.max_angular_speed), -self.max_angular_speed)
-            cmd_vel.angular.z = angular_speed
-            
-            self.get_logger().info(
-                f"Aligning to road: heading error {math.degrees(heading_error):.1f}°, "
-                f"angular: {cmd_vel.angular.z:.2f} rad/s"
-            )
-        
-        else:
-            # Once aligned with road, focus on lateral position
-            if abs(lateral_error) > self.lateral_tolerance:
-                strafe_speed = self.kp_strafe * lateral_error
-                strafe_speed = max(min(strafe_speed, self.max_strafe_speed), -self.max_strafe_speed)
-                cmd_vel.linear.y = strafe_speed
-            
-            # Small forward movement to maintain progress
-            if abs(forward_error) > 0.05:
-                forward_speed = self.kp_forward * min(forward_error, 0.5)  # Limit forward speed
-                forward_speed = max(min(forward_speed, self.max_linear_speed), 0)  # Only forward
-                cmd_vel.linear.x = forward_speed
-            
-            # Small heading correction to maintain road alignment
-            if abs(heading_error) > 0.05:
-                angular_correction = 0.5 * self.kp_heading * heading_error
-                cmd_vel.angular.z = angular_correction
-            
-            self.get_logger().info(
-                f"Following lane: lateral error {lateral_error:.3f}m, "
-                f"forward: {cmd_vel.linear.x:.2f}m/s, "
-                f"strafe: {cmd_vel.linear.y:.2f}m/s"
-            )
-        
-        self.wheel_pub.publish(cmd_vel)
-        return False
-    
-    def goto(self, target_x, target_y, odom:Odometry):
+    def goto(self, target_x, target_y, odom:Odometry, is_cw = False):
+        # print('goto', is_cw, self.target_angle)
         if target_x is None or target_y is None:
             return False
-        
+
         current_pos = odom.pose.pose.position
         current_ori = odom.pose.pose.orientation
 
         current_x = current_pos.x
         current_y = current_pos.y
-
         current_yaw = yaw_from_quaternion(current_ori)
 
+        # World-frame vector to target
         dx_world = target_x - current_x
         dy_world = target_y - current_y
 
+        # Transform to robot frame
         dx_robot = dx_world * math.cos(current_yaw) + dy_world * math.sin(current_yaw)
-        dy_robot = -dy_world * math.sin(current_yaw) + dy_world * math.cos(current_yaw)
+        dy_robot = -dx_world * math.sin(current_yaw) + dy_world * math.cos(current_yaw)
 
+        # Compute distance along robot's forward direction
+        forward_distance = dx_robot
+        if is_cw:
+            forward_distance -= 0.15
+
+        # Only move forward if we haven't reached the stopping distance
+        forward_speed = 0.0
+        if forward_distance > 0.05:  # small threshold
+            # forward_speed = self.kp_forward * min(forward_distance, 0.5)
+            # forward_speed = min(forward_speed, self.max_linear_speed)
+            forward_speed = self.max_linear_speed
+
+        # Strafe speed
+        strafe_speed = dy_robot
+        strafe_speed = max(min(strafe_speed, self.max_strafe_speed), -self.max_strafe_speed)
+
+        # Heading correction toward target angle
+        heading_error = self.target_angle - current_yaw
+        while heading_error > math.pi:
+            heading_error -= 2 * math.pi
+        while heading_error < -math.pi:
+            heading_error += 2 * math.pi
+
+        angular_correction = 0.0
+        if abs(heading_error) > 0.025:
+            angular_correction = self.kp_heading * heading_error
+            angular_correction = max(min(angular_correction, self.max_angular_speed), -self.max_angular_speed)
+
+        # Publish velocities
         cmd_vel = Twist()
-
-        cmd_vel.linear.x = max(min(dx_robot, self.max_linear_speed), -dx_robot)
-        strafe_speed = self.kp_strafe * dy_robot
-        cmd_vel.linear.y = max(min(strafe_speed, self.max_strafe_speed), -self.max_strafe_speed)
-
+        cmd_vel.linear.x = forward_speed
+        cmd_vel.linear.y = strafe_speed
+        cmd_vel.angular.z = angular_correction
         self.wheel_pub.publish(cmd_vel)
-        return False
+
+        # Return True if we reached stopping distance
+        if forward_distance <= 0.05:
+            self.last_arrived = time.time()
+        return forward_distance <= 0.05
 
     def should_use_last_target(self, current_time):
         """Check if we should use the last target point"""
@@ -504,21 +473,53 @@ class Navigation(Node):
         ff_left = None
         ff_right = None
         ff_right_far = None
-        
+
         if seedpoint_l:
             ff_left = self.ff_mask(mask, seedpoint_l) # since FF_MASK_ONLY, perhaps just give mask instead of copying over.
         if seedpoint_r:
             ff_right = self.ff_mask(mask, seedpoint_r)
 
-        return seedpoint_l, seedpoint_r, ff_left, ff_right        
+        seedpoint_rf = None
+        if seedpoint_r:
+            _x = w - 1
+            _y = 0
+            while _y < h - 1:
+                if mask[_y, _x] and not ff_right[_y, _x]:
+                    seedpoint_rf = (_x, _y)
+                    break
+                _y += 1
+
+        if seedpoint_rf:
+            ff_right_far = self.ff_mask(mask, seedpoint_rf)
+        
+        return seedpoint_l, seedpoint_r, seedpoint_rf, ff_left, ff_right, ff_right_far
+
+    def turn_right(self, odom:Odometry):
+        current_pos = odom.pose.pose.position
+        current_ori = odom.pose.pose.orientation
+        cmd_vel = Twist()
+
+        cmd_vel.linear.x = self.turn_speed
+        
+        cmd_vel.angular.z = -self.turn_speed / self.turn_radius
+        # return
+        self.wheel_pub.publish(cmd_vel)
+        return True
 
     def proc(self, rgb_m, dep_m, odom_m:Odometry = None):
         image_bgr = self.cv_bridge.imgmsg_to_cv2(rgb_m, 'bgr8')
         image_dep = self.cv_bridge.imgmsg_to_cv2(dep_m, '16UC1')
 
-        # if (tmp := self.odom_mapper.get_odom_msg()):
-        #     odom_m = tmp
-        #     self.print_odom(odom_m)
+        if (tmp := self.odom_mapper.get_odom_msg()):
+            odom_m = tmp
+            # self.print_odom(odom_m)
+
+        if not self.target_angle:
+            self.target_angle = yaw_from_quaternion(odom_m.pose.pose.orientation)
+            self.angle_snapper = AngleSnapper(self.target_angle)
+
+        # print(self.target_angle, yaw_from_quaternion(odom_m.pose.pose.orientation),  self.angle_snapper.snap(yaw_from_quaternion(odom_m.pose.pose.orientation)))
+        self.target_angle = self.angle_snapper.snap(yaw_from_quaternion(odom_m.pose.pose.orientation))
 
         oh, ow = image_bgr.shape[:2]
         scale = 1/4
@@ -533,16 +534,20 @@ class Navigation(Node):
         upper = np.array([self.lM, self.aM, self.bM])
         lab_img = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
         mask_lab = cv2.inRange(lab_img, lower, upper)
-
-        # Remove small noise
-        kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        cleaned = cv2.morphologyEx(mask_lab, cv2.MORPH_OPEN, kernel_open)
         
         # Fill small holes
-        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        cleaned = cv2.morphologyEx(mask_lab, cv2.MORPH_CLOSE, kernel_close)
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel_close)
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel_close)
 
-        seedpoint_l, seedpoint_r, ff_left, ff_right = self.lane_detection(cleaned)
+        # # Remove small noise
+        # kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        # cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_OPEN, kernel_open)
+
+        seedpoint_l, seedpoint_r, seedpoint_rf, ff_left, ff_right, ff_right_far = self.lane_detection(cleaned)
 
         target_point = None
         target_depth = 0
@@ -571,12 +576,24 @@ class Navigation(Node):
         #         return
         
         # Find target point between lanes
+        if ff_left is not None:
+            cv2.imshow('ll', ff_left)
+        if ff_right is not None:
+            cv2.imshow('rl', ff_right)
+        if ff_right_far is not None:
+            cv2.imshow('rl_f', ff_right_far)
         if seedpoint_l and seedpoint_r:
             if np.array_equal(ff_left, ff_right): #not sure if this will work, find a way to compare ff masks
+                # print('hmm')
                 pass # we're presumably doing a right turn.
+                ##DO_RIGHT_TURN_LOGIC
+                # self.target_angle += 90
+                self.turn_right(odom_m)
+                # self.stop_movement()
+                return
             else:
                 _step = 5
-                _y = h//2
+                _y = 0
                 while _y < h-1:
                     ll = np.where(ff_left[_y, :] > 0)[0]
                     lr = np.where(ff_right[_y, :] > 0)[0]
@@ -585,9 +602,9 @@ class Navigation(Node):
                         rx = lr[0] # gotta be careful with cam angles, might cause problems
                         if rx in ll:
                             break
-                        if rx - lx < 100: ## 
-                            target_point = None
-                            break
+                        # if rx - lx < 100: ## 
+                        #     target_point = None
+                        #     break
                         else:
                             target_point = ((lx+rx)//2, _y)
                             target_depth = image_dep[_y, (lx+rx)//2]
@@ -599,7 +616,7 @@ class Navigation(Node):
                                 self.status = Status.moving
                                 self.crosswalks += 1
 
-                        cv2.line(mask_lab, (lx, _y), (rx, _y), (128,128,128), 2)
+                        cv2.line(out, (lx, _y), (rx, _y), (128,128,128), 2)
                         break
                     _y += _step
 
@@ -632,7 +649,8 @@ class Navigation(Node):
         current_time = time.time()
         
         # Determine which target to use
-        if new_target_found and target_point and target_depth > 0:
+        if new_target_found and target_point and target_depth > 0 and self.last_target_found + 10 < time.time():
+            self.last_target_found = time.time()
             # New target found - use it and update last target
             u, v = target_point
             u_original = int(u / scale)
@@ -646,37 +664,40 @@ class Navigation(Node):
                 self.last_target_time = current_time
                 target_source = "NEW TARGET"
                 
-        elif self.should_use_last_target(current_time) and self.last_target_point:
-            # Use last target point (no new target found but within timeout)
-            self.current_target = self.last_target_point
-            target_source = "LAST TARGET"
-            odom_point = Point()
-            odom_point.x = self.current_target[0]
-            odom_point.y = self.current_target[1]
-            odom_point.z = 0.0
+        # elif self.should_use_last_target(current_time) and self.last_target_point:
+        #     # Use last target point (no new target found but within timeout)
+        #     self.current_target = self.last_target_point
+        #     target_source = "LAST TARGET"
+        #     odom_point = Point()
+        #     odom_point.x = self.current_target[0]
+        #     odom_point.y = self.current_target[1]
+        #     odom_point.z = 0.0
             
-        else:
-            # No target available
-            self.stop_movement()
-            self.current_target = None
-            cv2.putText(out, 'NO TARGET', (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            # Resize and display
-            out = cv2.resize(out, (640, 480), interpolation=cv2.INTER_NEAREST_EXACT)
-            cv2.imshow('lab mask', out)
-            cv2.waitKey(1)
-            return
+        # else:
+        #     # No target available
+        #     self.stop_movement()
+        #     self.current_target = self.current_target or None
+        #     cv2.putText(out, 'NO TARGET', (10, 30), 
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        #     # Resize and display
+        #     out = cv2.resize(out, (640, 480), interpolation=cv2.INTER_NEAREST_EXACT)
+        #     cv2.imshow('lab mask', out)
+        #     cv2.waitKey(1)
+        #     return
+        out = cv2.resize(out, (640, 480), interpolation=cv2.INTER_NEAREST_EXACT)
 
         # Continue with navigation using current_target
         if self.current_target:
             # Estimate road direction
             if ff_left is not None and ff_right is not None:
-                self.road_direction = self.estimate_road_direction(ff_left, ff_right, (h, w), odom_m, image_dep)
+                self.road_direction = None#self.estimate_road_direction(ff_left, ff_right, (h, w), odom_m, image_dep)
             
             # Follow lane with road alignment
             status_text = 'CUSTOM'
             # time.sleep(5)
-            self.goto(self.current_target[0], self.current_target[1], odom_m)
+            self.goto(self.current_target[0], self.current_target[1], odom_m, ff_right_far is not None)
+            # if self.last_arrived + 5 < time.time():
+
             # if self.road_direction is not None:
             #     target_reached = self.follow_lane_with_alignment(
             #         self.current_target[0], self.current_target[1], 
@@ -689,10 +710,10 @@ class Navigation(Node):
             #     status_text = 'SIMPLE LANE FOLLOWING'
             
             # Display status and target source
-            cv2.putText(out, status_text, (10, 30), 
+            cv2.putText(out, f'Odom: {odom_m.pose.pose.position.x}, {odom_m.pose.pose.position.y}', (10, 30), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            cv2.putText(out, f'Target: {target_source}', (10, 60), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+            # cv2.putText(out, f'Target: {target_source}, {self.current_target[0]}, {self.current_target[1]}', (10, 60), 
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
 
             # Display road direction if available
             if self.road_direction is not None:
