@@ -271,6 +271,8 @@ class Navigation(Node):
         # yolov5 service clients
         self.yolov5_start_client = self.create_client(Trigger, '/yolov5/start')
         self.yolov5_stop_client = self.create_client(Trigger, '/yolov5/stop')
+        self.yolov5_start_client.wait_for_service()
+        self.yolov5_stop_client.wait_for_service()
 
         # publishes, services. Direct driving for now.
         # self.create_service(Trigger, '/ms_driver/arrived', self.arrive_srv_cb)
@@ -453,17 +455,21 @@ class Navigation(Node):
 
     def send_request(self, client, msg):
         future = client.call_async(msg)
-    
-        # Spin until future is complete
-        rclpy.spin_until_future_complete(self, future)
-        
-        return future.result()  # safe to get result now
+        # do NOT spin_until_future_complete here
+        def callback(fut):
+            try:
+                res = fut.result()
+                self.get_logger().info('YOLO started successfully')
+            except Exception as e:
+                self.get_logger().warn(f'Failed to start YOLO: {e}')
+        future.add_done_callback(callback)
+        return future
 
     def activate_yolo(self):
         self.get_logger().info('activating yolo')
         self.yolo_active = True
         self.send_request(self.yolov5_start_client, Trigger.Request())
-        self.yolo5_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.yolo_cb, 2)
+        self.yolo5_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.yolo_cb, 5)
 
     def deactivate_yolo(self):
         self.get_logger().info('deactivating yolo')
@@ -475,17 +481,14 @@ class Navigation(Node):
     def yolo_cb(self, msg:ObjectsInfo):
         self.get_logger().info('yolo cb')
         objects = msg.objects
-        if not self.status == Status.scanning:
-            self.get_logger().warn(f'yolo callback when status is not scanning, {self.status}')
-            return
         if not objects: # can this even happen? idk.
             return
         for obj in objects:
             obj:ObjectInfo
-            self.get_logger().info(f'{name} detected, count: {self.detects[name]['count']}, conf: {obj.score:.2f}')
+            name = obj.class_name
+            self.get_logger().info(f'{name} detected, count: {self.detects[name]["count"]}, conf: {obj.score:.2f}')
             if obj.score < self.yolo_min_conf:
                 continue
-            name = obj.class_name
             points = obj.box
             count = self.detects[name]['count'] + 1
             self.detects[name] = {'box':points, 'count':count}
@@ -495,12 +498,13 @@ class Navigation(Node):
         #     self.get_logger().info('deactivate yolo')
         #     self.deactivate_yolo()
 
-    def direct(self, rgb_m, dep_m, odom_m:Odometry):
+    def direct(self, rgb_m, dep_m):
         """was ment to use queue to separate cb to logic but logic seems light enough. 
         Just do proc directly. 
         """
+        # self.slogger.log('not frozen')
         # self.print_odom(odom_m)
-        self.proc(rgb_m, dep_m, odom_m)
+        self.proc(rgb_m, dep_m)
 
     def ff_mask(self, mask, point):
         _mask = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), np.uint8)
@@ -547,7 +551,7 @@ class Navigation(Node):
         if seedpoint_l:
             ff_left = self.ff_mask(mask, seedpoint_l) # since FF_MASK_ONLY, perhaps just give mask instead of copying over.
         if seedpoint_r:
-            if ff_left and ff_left[seedpoint_r[1], seedpoint_r[0]] > 0: #seedpoint_r is in ff_left, nullify it.
+            if ff_left is not None and ff_left[seedpoint_r[1], seedpoint_r[0]] > 0: #seedpoint_r is in ff_left, nullify it.
                 seedpoint_r = None
             else:
                 ff_right = self.ff_mask(mask, seedpoint_r)
@@ -581,6 +585,10 @@ class Navigation(Node):
 
     def proc(self, rgb_m, dep_m):
         """main logic, tied to 15(or 20)fps of the cameras"""
+        if not (odom_m := self.odom_mapper.get_odom_msg()):
+            self.slogger.log('proc: self.odom_mapper.get_odom_msg returned None')
+            return
+
         if not self.target_angle: # set the initial angle as target_angle. 
             self.target_angle = yaw_from_quaternion(odom_m.pose.pose.orientation)
             self.angle_snapper = AngleSnapper(self.target_angle)
@@ -614,10 +622,6 @@ class Navigation(Node):
 
         image_bgr = self.cv_bridge.imgmsg_to_cv2(rgb_m, 'bgr8')
         image_dep = self.cv_bridge.imgmsg_to_cv2(dep_m, '16UC1')
-
-        if not (odom_m := self.odom_mapper.get_odom_msg()):
-            self.slogger.log('proc: self.odom_mapper.get_odom_msg returned None')
-            return
 
         self.target_angle = self.angle_snapper.snap(yaw_from_quaternion(odom_m.pose.pose.orientation))
 
