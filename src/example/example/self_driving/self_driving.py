@@ -168,7 +168,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.8  # normal driving speed
+        self.normal_speed = 0.6  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -181,11 +181,11 @@ class SelfDrivingNode(Node):
         self.depth_image = None
         self.avoid_until = 0.0
         self.dmin_ema = None        # d_min 평활화용
-        self.min_wall_speed = 0.2
+        self.min_wall_speed = 0.1
         self.last_avoid_s = 0.0
 
         self.last_depart_time = -1e9     # 횡단보도 마지막에 멈췄던 시간 체크용. 첫 실행 때 횡단보도 무시를 방지하기 위해 초기값을 과거로 설정.
-        self.stop_cooldown = 1.0    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
+        self.stop_cooldown = 1.5    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
 
         self.last_objects_ts = time.time()
         self.objects_timeout = 0.8  # 초
@@ -579,7 +579,7 @@ class SelfDrivingNode(Node):
                                 s = max(self.last_avoid_s, 0.15)   # 최소한의 회피 유지(필요시 0.10~0.20 튜닝)
 
                             # === 가변 조향 ===
-                            twist.angular.z = -1.5 - 0.6 * s      # -0.2 ~ -0.8 근처
+                            twist.angular.z = -1.3 - 0.6 * s      # -0.2 ~ -0.8 근처
 
                             # === 가변 선속도 ===
                             v_min = self.min_wall_speed           # 예: 0.05
@@ -602,7 +602,7 @@ class SelfDrivingNode(Node):
                         s = max(self.last_avoid_s, 0.15)
 
                         twist = Twist()
-                        twist.angular.z = -1.5 - 0.6 * s
+                        twist.angular.z = -1.3 - 0.6 * s
                         v_min = self.min_wall_speed
                         v_max = self.normal_speed
                         twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
@@ -649,7 +649,7 @@ class SelfDrivingNode(Node):
                     # 아무것도 안 보이면 천천히 왼쪽으로 돌면서 차선 찾기
                     elif status is None:
                         twist.linear.x = self.normal_speed
-                        twist.angular.z = 0.5
+                        twist.angular.z = 0.7
                         self.mecanum_pub.publish(twist)
                         self.get_logger().info("there isn't lane_x")
                     
