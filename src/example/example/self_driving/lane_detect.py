@@ -33,7 +33,7 @@ class LaneDetector(object):
         self.lane_roi_y_start = int(self.img_height * 0.4)
         self.lane_roi_y_end = self.img_height
         self.lane_roi_x_start = 0
-        self.lane_roi_x_end = int(self.img_width * 0.3)
+        self.lane_roi_x_end = int(self.img_width * 0.5)
 
         # 2. 횡단보도 감지를 위한 ROI
         self.crosswalk_roi_y_start = int(self.img_height * 0.5)
