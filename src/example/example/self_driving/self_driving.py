@@ -191,7 +191,7 @@ class SelfDrivingNode(Node):
         self.objects_timeout = 0.8  # 초
 
         self.signal_waiting = False     # 정지선 신호 대기 모드
-        self.signal_window = 5.0        # 정지선에서 yolo 켜고 기다릴 시간
+        self.signal_window = 3.0        # 정지선에서 yolo 켜고 기다릴 시간
         self.signal_deadline = 0.0
         self.red_hold = False           # 빨간불 봤을 때 초록불 나올 때까지 대기하는 플래그
         self.max_red_wait = 10.0        # 빨간불 대기 최대 (혹시 몰라서. 없어도 됨.)
@@ -296,8 +296,8 @@ class SelfDrivingNode(Node):
         turn_time = 1.2
         t_end = time.time() + turn_time
         while time.time() < t_end and self.is_running:
-            twist.linear.x = 0.1
-            twist.angular.z = -0.8
+            twist.linear.x = 0.0
+            twist.angular.z = -2.0
             self.mecanum_pub.publish(twist)
             time.sleep(0.02)
         self.mecanum_pub.publish(Twist())
