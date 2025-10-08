@@ -582,7 +582,7 @@ class SelfDrivingNode(Node):
 
                 # line following processing
                     status, lane_x = self.lane_detect(mask_white, mask_yellow)
-                    x_setpoint = int(w * 0.20) # 화면 중앙에서 왼쪽.
+                    x_setpoint = int(w * 0.10) # 화면 중앙에서 왼쪽.
 
                     if status == "GO_STRAIGHT":
                         self._drive_straight(lane_x, x_setpoint, twist)
