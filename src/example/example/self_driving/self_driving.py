@@ -539,7 +539,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.10, 0.40
+                        NEAR, FAR = 0.30, 0.45
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
@@ -576,7 +576,7 @@ class SelfDrivingNode(Node):
                             self.get_logger().info("There's a Wall! I'm turning right!")
                             
                             self.turn_right_count += 1
-                            if self.turn_right_count > 2:
+                            if self.turn_right_count > 4:
                                 self.turn_right_count = 0
                                 self.stop_flag = True   # 횡단보도 다시 인식하게 만들기.
                 
