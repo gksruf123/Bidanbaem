@@ -240,7 +240,7 @@ class Navigation(Node):
         # Navigation control parameters
         self.proc_scale = 1/4 # 1/4 seems to work fine, use 1/2 if problems occur
         self.current_target = None
-        self.last_target_point = None  # Store the last detected target point
+        self.target_update_threshold = 0.15**2 # squared value for comparison
         
         # Control parameters for mecanum wheel. 
         self.max_linear_speed = 0.8 # m/s
@@ -291,8 +291,6 @@ class Navigation(Node):
     def init_process(self):
         self.init_timer.cancel() 
         self.stop_movement()
-        self.yolov5_start_client.wait_for_service() ### disable for debug
-        self.yolov5_stop_client.wait_for_service()
         self.activate_yolo()
         """activate yolo on init"""
 
@@ -459,9 +457,9 @@ class Navigation(Node):
         def callback(fut):
             try:
                 res = fut.result()
-                self.get_logger().info('YOLO started successfully')
+                self.get_logger().info('request sent successfully')
             except Exception as e:
-                self.get_logger().warn(f'Failed to start YOLO: {e}')
+                self.get_logger().warn(f'request failed: {e}')
         future.add_done_callback(callback)
         return future
 
@@ -474,19 +472,19 @@ class Navigation(Node):
     def deactivate_yolo(self):
         self.get_logger().info('deactivating yolo')
         self.yolo_active = False
-        self.yolo5_sub.destroy()
+        # self.yolo5_sub.destroy()
         self.send_request(self.yolov5_stop_client, Trigger.Request())
         self.detects.clear()
 
     def yolo_cb(self, msg:ObjectsInfo):
-        self.get_logger().info('yolo cb')
         objects = msg.objects
-        if not objects: # can this even happen? idk.
+        if not objects or not self.yolo_active: 
             return
+        self.get_logger().info('yolo cb')
         for obj in objects:
             obj:ObjectInfo
             name = obj.class_name
-            self.get_logger().info(f'{name} detected, count: {self.detects[name]["count"]}, conf: {obj.score:.2f}')
+            # self.get_logger().info(f'{name} detected, count: {self.detects[name]["count"]}, conf: {obj.score:.2f}')
             if obj.score < self.yolo_min_conf:
                 continue
             points = obj.box
@@ -589,7 +587,7 @@ class Navigation(Node):
             self.slogger.log('proc: self.odom_mapper.get_odom_msg returned None')
             return
 
-        if not self.target_angle: # set the initial angle as target_angle. 
+        if self.target_angle is None: # set the initial angle as target_angle. 
             self.target_angle = yaw_from_quaternion(odom_m.pose.pose.orientation)
             self.angle_snapper = AngleSnapper(self.target_angle)
 
@@ -641,11 +639,7 @@ class Navigation(Node):
         
         # Fill small holes
         kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        mask = cv2.morphologyEx(mask_lab, cv2.MORPH_CLOSE, kernel_close)
-        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close)
-        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close)
+        mask = cv2.morphologyEx(mask_lab, cv2.MORPH_CLOSE, kernel_close, iterations=3)
 
         # # Remove small noise
         # kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -714,9 +708,17 @@ class Navigation(Node):
             odom_point = self.pixel_transformer.pixel_to_odom_direct(u_orig, v_orig, image_dep[v, u], odom_m)
 
             if odom_point: # transform successful
-                self.status = Status.moving
-                self.current_target = (odom_point.x, odom_point.y)
-                self.slogger.log(f'new target: {odom_point.x:.1f},{odom_point.y:.1f} cp:{odom_m.pose.pose.position.x}, {odom_m.pose.pose.position.y}')
+                if self.current_target is not None:
+                    ctx, cty = self.current_target
+                    tx, ty = odom_point.x, odom_point.y
+                    dsq = (ctx - tx)**2 + (cty - ty)**2
+                    if dsq < self.target_update_threshold:
+                        self.current_target = (odom_point.x, odom_point.y)
+                        self.slogger.log(f'update target: {odom_point.x:.1f},{odom_point.y:.1f} cp:{odom_m.pose.pose.position.x}, {odom_m.pose.pose.position.y}')
+                else: 
+                    self.status = Status.moving
+                    self.current_target = (odom_point.x, odom_point.y)
+                    self.slogger.log(f'new target: {odom_point.x:.1f},{odom_point.y:.1f} cp:{odom_m.pose.pose.position.x}, {odom_m.pose.pose.position.y}')
         
         cv2.imshow('lab mask', out)
         cv2.waitKey(1)
