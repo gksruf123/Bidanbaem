@@ -584,7 +584,7 @@ class SelfDrivingNode(Node):
                     status, lane_x = self.lane_detect(mask_white, mask_yellow)
                     resized_w = self.lane_detect.img_width
                     x_setpoint = int(resized_w * 0.20) # 화면 중앙에서 왼쪽.
-                    self.get_logger().info(f"x_setpoint: {x_setpoint}")
+                    self.get_logger().info(f"lane_x: {lane_x}")
 
                     if status == "GO_STRAIGHT":
                         self._drive_straight(lane_x, x_setpoint, twist)
