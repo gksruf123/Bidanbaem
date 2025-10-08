@@ -281,7 +281,7 @@ class SelfDrivingNode(Node):
     
     # PID for GO_STRAIGHT
     def _drive_straight(self, lane_x, x_setpoint, twist):
-        pos_error = x_setpoint - lane_x
+        pos_error = lane_x - x_setpoint
 
         self.pid.SetPoint = 0
         self.pid.update(pos_error)
@@ -617,6 +617,7 @@ class SelfDrivingNode(Node):
                         twist.linear.x = self.normal_speed
                         twist.angular.z = 0.1
                         self.mecanum_pub.publish(twist)
+                        self.get_logger().info("there isn't lane_x")
                     
                     else:
                         self.pid.clear()
