@@ -243,9 +243,9 @@ class Navigation(Node):
         self.target_update_threshold = 0.15**2 # squared value for comparison
         
         # Control parameters for mecanum wheel. 
-        self.max_linear_speed = 0.8 # m/s
+        self.max_linear_speed = 0.4 # m/s
         self.max_strafe_speed = self.max_linear_speed * 0.7
-        self.max_angular_speed = 1.0
+        self.max_angular_speed = 0.3
 
         self.max_linear_accel = 4.0 # m/s**2 
         self.max_strafe_accel = 3.5
@@ -253,7 +253,7 @@ class Navigation(Node):
 
         self.position_tolerance = 0.1
         self.lateral_tolerance = 0.1
-        self.heading_tolerance = 0.025
+        self.heading_tolerance = 0.1
         self.target_angle = None
 
         self.turn_speed = self.max_linear_speed * 0.8
@@ -386,7 +386,7 @@ class Navigation(Node):
         current_y = current_pos.y
         current_yaw = yaw_from_quaternion(current_ori)
 
-        self.slogger.log(f'target loop target: {target_x:.1f}, {target_y:.1f}, cp: {current_pos.x:.1f}, {current_pos.y:.1f}, yaw: {current_yaw:.1f}')
+        self.slogger.log(f'target loop: {target_x:.2f}, {target_y:.2f}, cp: {current_pos.x:.2f}, {current_pos.y:.2f}, yaw: {current_yaw:.1f}')
 
         # World-frame vector to target
         dx_world = target_x - current_x
@@ -427,14 +427,18 @@ class Navigation(Node):
         cmd_vel.linear.x = self.cur_lx
         cmd_vel.linear.y = self.cur_ly
         cmd_vel.angular.z = self.cur_az
-        self.wheel_pub.publish(cmd_vel)
 
         if forward_speed == 0.0 and strafe_speed == 0.0 and angular_speed == 0.0: # not moving for some reason
             if forward_distance < self.position_tolerance: # arrived, start scanning
                 self.current_target = None
+                self.cur_lx = 0.0
+                self.cur_ly = 0.0
+                self.cur_az = 0.0
                 self.status = Status.scanning
             else:
                 self.status = Status.stopped
+
+        self.wheel_pub.publish(cmd_vel)
 
 
     def stop_movement(self):
@@ -480,7 +484,7 @@ class Navigation(Node):
         objects = msg.objects
         if not objects or not self.yolo_active: 
             return
-        self.get_logger().info('yolo cb')
+        # self.get_logger().info('yolo cb')
         for obj in objects:
             obj:ObjectInfo
             name = obj.class_name
@@ -599,6 +603,7 @@ class Navigation(Node):
                 return # Wait for firm greens
 
         elif self.status == Status.scanning: # need to scan yolo
+            self.stop_movement()
             if not self.yolo_active:
                 self.activate_yolo()
                 return
@@ -607,6 +612,7 @@ class Navigation(Node):
             rt = self.detects['right']['count']
             # perhaps check red? 
             # need some sort of failsafe. 
+            self.slogger.log(f'go:{go}, gr:{gr}, rt:{rt}')
             if go >= self.yolo_min_count or gr >= self.yolo_min_count: # time to move
                 self.status = Status.find_target 
             elif rt >= self.yolo_min_count: # turn right
@@ -697,7 +703,7 @@ class Navigation(Node):
             # for _x, _y in points:
             #     cv2.circle(out, (_x, _y), 1, (0,0,255), 1)
         elif seedpoint_l and not seedpoint_r:
-            self.turn_right()
+            self.turn_right(odom_m)
 
         if target_point: # found target
             # need_update = False
@@ -714,11 +720,11 @@ class Navigation(Node):
                     dsq = (ctx - tx)**2 + (cty - ty)**2
                     if dsq < self.target_update_threshold:
                         self.current_target = (odom_point.x, odom_point.y)
-                        self.slogger.log(f'update target: {odom_point.x:.1f},{odom_point.y:.1f} cp:{odom_m.pose.pose.position.x}, {odom_m.pose.pose.position.y}')
+                        self.slogger.log(f'update target: {odom_point.x:.2f},{odom_point.y:.2f} cp:{odom_m.pose.pose.position.x:.2f}, {odom_m.pose.pose.position.y:.2f}')
                 else: 
                     self.status = Status.moving
                     self.current_target = (odom_point.x, odom_point.y)
-                    self.slogger.log(f'new target: {odom_point.x:.1f},{odom_point.y:.1f} cp:{odom_m.pose.pose.position.x}, {odom_m.pose.pose.position.y}')
+                    self.slogger.log(f'new target: {odom_point.x:.2f},{odom_point.y:.2f} cp:{odom_m.pose.pose.position.x:.2f}, {odom_m.pose.pose.position.y:.2f}')
         
         cv2.imshow('lab mask', out)
         cv2.waitKey(1)

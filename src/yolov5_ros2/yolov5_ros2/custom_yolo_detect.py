@@ -65,38 +65,44 @@ class YoloV5Ros2(Node):
         # image_topic = self.get_parameter('image_topic').value
         # self.image_sub = self.create_subscription(
         #     Image, image_topic, self.image_callback, 10)
-
+        self.rgb_img_sub = self.create_subscription(Image,
+            self.get_parameter('image_topic').value, self.image_callback, 1)    
         # Image format conversion (using cv_bridge).
         self.bridge = CvBridge()
 
         self.show_result = self.get_parameter('show_result').value
         self.pub_result_img = self.get_parameter('pub_result_img').value
+        self.start = False
 
     def get_node_state(self, request, response):
         response.success = True
         return response
 
     def start_srv_callback(self, request, response):
+        if self.start is True:
+            return
         self.get_logger().info('\033[1;32m%s\033[0m' % "start yolov5 detect")
         self.start = True
-        self.rgb_img_sub = self.create_subscription(Image,
-            self.get_parameter('image_topic').value, self.image_callback, 1)        
+        # self.rgb_img_sub = self.create_subscription(Image,
+        #     self.get_parameter('image_topic').value, self.image_callback, 1)        
         response.success = True
         response.message = "start"
         return response
 
     def stop_srv_callback(self, request, response):
+        if self.start is False:
+            return
         self.get_logger().info('\033[1;32m%s\033[0m' % "stop yolov5 detect")
         self.start = False
-        self.destroy_subscription(self.rgb_img_sub)
-        self.rgb_img_sub = None
+        # self.destroy_subscription(self.rgb_img_sub)
+        # self.rgb_img_sub = None
         response.success = True
         response.message = "stop"
         return response
 
     def image_callback(self, msg: Image):
         if not self.start:
-            self.get_logger().info('yolov5 image_callback while self.start is False')
+            # self.get_logger().info('yolov5 image_callback while self.start is False')
             return
         
         # 5. Detect and publish results.
