@@ -30,10 +30,10 @@ class LaneDetector(object):
         self.img_height = 240
 
         # 1. 좌측 차선 감지를 위한 ROI (Region of Interest)
-        self.lane_roi_y_start = int(self.img_height * 0.4)
+        self.lane_roi_y_start = int(self.img_height * 0.3)
         self.lane_roi_y_end = self.img_height
         self.lane_roi_x_start = 0
-        self.lane_roi_x_end = int(self.img_width * 0.5)
+        self.lane_roi_x_end = int(self.img_width * 0.4)
 
         # 2. 횡단보도 감지를 위한 ROI
         self.crosswalk_roi_y_start = int(self.img_height * 0.5)
@@ -103,20 +103,9 @@ class LaneDetector(object):
         return result_image, mask_white, mask_yellow
 
     def __call__(self, mask_white, mask_yellow):
-        """
-        [수정]
-        미리 계산된 이진화 마스크를 입력받아 주행 로직만 처리합니다.
-        """
-        # [삭제] 이미지 리사이즈, 색 변환 등 모든 중복 처리 코드 삭제
-
-        # 비율을 기준으로 횡단보도 감지
-        crosswalk_roi = mask_white[self.crosswalk_roi_y_start:self.crosswalk_roi_y_end, 
-                                   self.crosswalk_roi_x_start:self.crosswalk_roi_x_end]
-        if self.crosswalk_roi_area > 0 and \
-           (cv2.countNonZero(crosswalk_roi) / self.crosswalk_roi_area) > self.stop_line_ratio_threshold:
-            return "STOP_LINE", lane_x
-
-        # 좌측 차선 감지
+        # 1. 항상 좌측 차선을 먼저 찾아 lane_x를 확보합니다.
+        lane_x = -1  # 기본값을 -1로 설정
+        
         roi_mask_left = np.zeros_like(mask_yellow)
         cv2.rectangle(roi_mask_left, (self.lane_roi_x_start, self.lane_roi_y_start), (self.lane_roi_x_end, self.lane_roi_y_end), 255, -1)
         yellow_lane_roi = cv2.bitwise_and(mask_yellow, mask_yellow, mask=roi_mask_left)
@@ -127,8 +116,26 @@ class LaneDetector(object):
             largest_contour = max(valid_contours, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(largest_contour)
             lane_x = x + w // 2
+            # 여기서 바로 return하지 않습니다.
+
+        # 2. 횡단보도 여부를 확인합니다.
+        is_stop_line = False
+        crosswalk_roi = mask_white[self.crosswalk_roi_y_start:self.crosswalk_roi_y_end, 
+                                self.crosswalk_roi_x_start:self.crosswalk_roi_x_end]
+        if self.crosswalk_roi_area > 0 and \
+        (cv2.countNonZero(crosswalk_roi) / self.crosswalk_roi_area) > self.stop_line_ratio_threshold:
+            is_stop_line = True
+
+        # 3. 결과를 조합하여 최종 반환값을 결정합니다.
+        if is_stop_line:
+            # 횡단보도가 감지되면, 위에서 계산한 lane_x와 함께 반환합니다.
+            return "STOP_LINE", lane_x
+
+        if lane_x != -1:
+            # 횡단보도는 없지만 차선이 감지되면, GO_STRAIGHT를 반환합니다.
             return "GO_STRAIGHT", lane_x
 
+        # 둘 다 감지되지 않으면 None을 반환합니다.
         return None, -1
 
 # --- 아래 코드는 이 파일을 단독으로 실행하여 테스트할 때 사용됩니다. ---

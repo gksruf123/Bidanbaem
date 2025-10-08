@@ -38,7 +38,7 @@ class SelfDrivingNode(Node):
         super().__init__(name, allow_undeclared_parameters=True, automatically_declare_parameters_from_overrides=True)
         self.name = name
         self.is_running = True
-        self.pid = pid.PID(0.4, 0.0, 0.05)
+        self.pid = pid.PID(0.05, 0.0, 0.05)
         self.param_init()
 
         self.fps = fps.FPS()  
@@ -196,6 +196,7 @@ class SelfDrivingNode(Node):
         self.red_hold = False           # 빨간불 봤을 때 초록불 나올 때까지 대기하는 플래그
         self.max_red_wait = 10.0        # 빨간불 대기 최대 (혹시 몰라서. 없어도 됨.)
 
+        self.turn_right_count = 0       # 이것도 벽 마주친 횟수 세기 위한 용도.
         self.stop_flag = True           # 벽 마주치고 우회전 했을 때만 다시 횡단보도 인식하게 만들기 위함.
 
     def get_node_state(self, request, response):
@@ -323,12 +324,14 @@ class SelfDrivingNode(Node):
 
         # 1) 빨간불일 경우: red_hold 진입 (초록불 볼 때까지 정지)
         if 'red' in classes:
+            self.get_logger().info("RED!!!")
             self.red_hold = True
             self.mecanum_pub.publish(Twist())
             return True
 
         # 2) 초록불일 경우 즉시 출발
         if 'green' in classes:
+            self.get_logger().info("GREEEEEEN!!!")
             self.yolo_stop(delay_s=0.3)
             self.signal_waiting = False
             self.red_hold = False
@@ -361,6 +364,7 @@ class SelfDrivingNode(Node):
         
         # 4) 빨간불이 보인 적이 있다면: 초록불 나올 때까지 정지 유지
         if self.red_hold:
+            self.get_logger().info("WAIT.....")
             # 최대 대기 시간 = 타임아웃
             if self.max_red_wait and now > (self.signal_deadline + self.max_red_wait):
                 self.yolo_stop(delay_s=0.3)
@@ -373,6 +377,7 @@ class SelfDrivingNode(Node):
         
         # 5) 아무 것도 안 보일 경우 최소 대기 시간만큼만 기다렸다가 출발
         if now > self.signal_deadline:
+            self.get_logger().info("YOLO couldn't detect anything........")
             self.yolo_stop(delay_s=0.3)
             self.signal_waiting = False
             self.last_depart_time = time.time()
@@ -477,16 +482,28 @@ class SelfDrivingNode(Node):
                 else:
                     continue
 
-            # 처음에 신호등 보고 초록불일 때만 출발
+            # 처음에 '초록불' 신호를 무한정 기다리는 로직
             if start_flag:
                 start_flag = False
-                self._enter_signal_wait()
+                self.get_logger().info("Waiting for initial GREEN signal to start...")
+                self.yolo_start() # 신호를 보기 위해 YOLO를 켭니다.
 
-                while self.signal_waiting:
-                    if not self._tick_signal_wait():
-                        self.last_depart_time = -1e9
-                        break
-                    time.sleep(0.05)
+                while self.is_running: # 초록불을 볼 때까지 무한정 반복
+                    # YOLO가 감지한 객체 목록을 확인합니다.
+                    classes = {o.class_name for o in self.objects_info} if self.objects_info else set()
+
+                    if 'green' in classes:
+                        self.get_logger().info("Initial GREEN signal detected! Starting driving.")
+                        # 출발 후에는 신호 감지가 필요 없으므로 1초 뒤에 YOLO를 끕니다.
+                        self.yolo_stop(delay_s=1.0) 
+                        break # 무한 반복을 탈출하고 본격적인 주행 시작
+
+                    if 'red' in classes:
+                        self.get_logger().info("Initial signal is RED. Waiting...")
+
+                    time.sleep(0.1) # 0.1초마다 신호를 다시 확인
+                
+                # 첫 번째 루프는 여기서 끝내고 다음 루프부터 정상 주행 시작
                 continue
 
             # 욜로 감지된 지 오래됐으면 기존의 욜로 객체 전부 초기화
@@ -559,7 +576,12 @@ class SelfDrivingNode(Node):
 
                             self.mecanum_pub.publish(twist)
 
-                            self.stop_flag = True   # 횡단보도 다시 인식하게 만들기.
+                            self.get_logger().info("There's a Wall! I'm turning right!")
+                            
+                            self.turn_right_count += 1
+                            if self.turn_right_count > 2:
+                                self.turn_right_count = 0
+                                self.stop_flag = True   # 횡단보도 다시 인식하게 만들기.
                 
                     if (not wall_turning) and (time.time() < self.avoid_until):
                         wall_turning = True
@@ -583,7 +605,7 @@ class SelfDrivingNode(Node):
                 # line following processing
                     status, lane_x = self.lane_detect(mask_white, mask_yellow)
                     resized_w = self.lane_detect.img_width
-                    x_setpoint = int(resized_w * 0.25) # 화면 중앙에서 왼쪽.
+                    x_setpoint = int(resized_w * 0.18) # 화면 중앙에서 왼쪽.
                     self.get_logger().info(f"lane_x: {lane_x}")
 
                     if status == "GO_STRAIGHT":
