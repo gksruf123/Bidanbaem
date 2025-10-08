@@ -282,6 +282,14 @@ class SelfDrivingNode(Node):
     
     # PID for GO_STRAIGHT
     def _drive_straight(self, lane_x, x_setpoint, twist):
+        if lane_x == -1:
+            # lane_x가 -1이면 '차선 탐색' 동작을 수행하고 즉시 함수를 종료합니다.
+            twist.linear.x = self.normal_speed
+            twist.angular.z = 0.7
+            self.mecanum_pub.publish(twist)
+            self.get_logger().info("Searching for lane (called from invalid state)")
+            return
+        
         pos_error = lane_x - x_setpoint
 
         self.pid.SetPoint = 0
@@ -357,16 +365,37 @@ class SelfDrivingNode(Node):
             self.signal_waiting = False
             self.last_depart_time = time.time()
 
-            # 오돔 기반 주차 시퀀스: 전진 1.8m
-            self._move_relative_odom(dx=1.8, dy=0.0,
-                                     vx_max=0.80, vy_max=0.0,
-                                     stop_tolerance=0.03, timeout_s=8.0)
-            time.sleep(0.2)
+            # 오돔 빼고 걍 슈퍼 하드 코딩
+            twist = Twist()
 
-            # 우측으로 0.3m
-            self._move_relative_odom(dx=0.0, dy=-0.3,
-                                     vx_max=0.0, vy_max=0.5,
-                                     stop_tolerance=0.03, timeout_s=8.0)
+            # 1. 주차장 앞까지 직진
+            forward_time = 2.5
+            t_end_forward = time.time() + forward_time
+            while time.time() < t_end_forward and self.is_running:
+                twist.linear.x = self.normal_speed  # 설정된 기본 속도로 직진
+                twist.angular.z = 0.0
+                self.mecanum_pub.publish(twist)
+                time.sleep(0.02)    
+
+            # 2. 주차
+            forward_time = 1.0
+            t_end_forward = time.time() + forward_time
+            while time.time() < t_end_forward and self.is_running:
+                twist.linear.y = -0.5  # 설정된 기본 속도로 직진
+                twist.angular.z = 0.0
+                self.mecanum_pub.publish(twist)
+                time.sleep(0.02)                    
+
+            # # 오돔 기반 주차 시퀀스: 전진 1.8m
+            # self._move_relative_odom(dx=1.8, dy=0.0,
+            #                          vx_max=0.80, vy_max=0.0,
+            #                          stop_tolerance=0.03, timeout_s=8.0)
+            # time.sleep(0.2)
+
+            # # 우측으로 0.3m
+            # self._move_relative_odom(dx=0.0, dy=-0.3,
+            #                          vx_max=0.0, vy_max=0.5,
+            #                          stop_tolerance=0.03, timeout_s=8.0)
             
             # 정지 및 주행 플래그 False로 바꿈으로써 주행 종료
             self.mecanum_pub.publish(Twist())
