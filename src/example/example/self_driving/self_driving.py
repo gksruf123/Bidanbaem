@@ -181,7 +181,7 @@ class SelfDrivingNode(Node):
         self.depth_image = None
         self.avoid_until = 0.0
         self.dmin_ema = None        # d_min 평활화용
-        self.min_wall_speed = 0.1
+        self.min_wall_speed = 0.2
         self.last_avoid_s = 0.0
 
         self.last_depart_time = -1e9     # 횡단보도 마지막에 멈췄던 시간 체크용. 첫 실행 때 횡단보도 무시를 방지하기 위해 초기값을 과거로 설정.
@@ -359,13 +359,13 @@ class SelfDrivingNode(Node):
 
             # 오돔 기반 주차 시퀀스: 전진 1.8m
             self._move_relative_odom(dx=1.8, dy=0.0,
-                                     vx_max=0.50, vy_max=0.18,
+                                     vx_max=0.80, vy_max=0.0,
                                      stop_tolerance=0.03, timeout_s=8.0)
             time.sleep(0.2)
 
             # 우측으로 0.3m
             self._move_relative_odom(dx=0.0, dy=-0.3,
-                                     vx_max=0.50, vy_max=0.18,
+                                     vx_max=0.0, vy_max=0.5,
                                      stop_tolerance=0.03, timeout_s=8.0)
             
             # 정지 및 주행 플래그 False로 바꿈으로써 주행 종료
@@ -579,7 +579,7 @@ class SelfDrivingNode(Node):
                                 s = max(self.last_avoid_s, 0.15)   # 최소한의 회피 유지(필요시 0.10~0.20 튜닝)
 
                             # === 가변 조향 ===
-                            twist.angular.z = -1.7 - 0.6 * s      # -0.2 ~ -0.8 근처
+                            twist.angular.z = -1.5 - 0.6 * s      # -0.2 ~ -0.8 근처
 
                             # === 가변 선속도 ===
                             v_min = self.min_wall_speed           # 예: 0.05
@@ -602,7 +602,7 @@ class SelfDrivingNode(Node):
                         s = max(self.last_avoid_s, 0.15)
 
                         twist = Twist()
-                        twist.angular.z = -1.7 - 0.6 * s
+                        twist.angular.z = -1.5 - 0.6 * s
                         v_min = self.min_wall_speed
                         v_max = self.normal_speed
                         twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
