@@ -168,7 +168,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.1  # normal driving speed
+        self.normal_speed = 0.2  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -288,9 +288,6 @@ class SelfDrivingNode(Node):
         self.pid.update(pos_error)
         twist.linear.x = self.normal_speed
         twist.angular.z = common.set_range(self.pid.output, -0.3, 0.3)
-        self.get_logger().info(
-            f"angular.z={twist.angular.z:.2f}"
-        )
         self.mecanum_pub.publish(twist)
 
     def _do_right_turn(self):
@@ -606,7 +603,6 @@ class SelfDrivingNode(Node):
                     status, lane_x = self.lane_detect(mask_white, mask_yellow)
                     resized_w = self.lane_detect.img_width
                     x_setpoint = int(resized_w * 0.18) # 화면 중앙에서 왼쪽.
-                    self.get_logger().info(f"lane_x: {lane_x}")
 
                     if status == "GO_STRAIGHT":
                         self._drive_straight(lane_x, x_setpoint, twist)
