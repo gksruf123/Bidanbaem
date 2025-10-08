@@ -554,7 +554,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.35, 0.48
+                        NEAR, FAR = 0.40, 0.55
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
@@ -579,7 +579,7 @@ class SelfDrivingNode(Node):
                                 s = max(self.last_avoid_s, 0.15)   # 최소한의 회피 유지(필요시 0.10~0.20 튜닝)
 
                             # === 가변 조향 ===
-                            twist.angular.z = -1.5 - 0.6 * s      # -0.2 ~ -0.8 근처
+                            twist.angular.z = -1.7 - 0.6 * s      # -0.2 ~ -0.8 근처
 
                             # === 가변 선속도 ===
                             v_min = self.min_wall_speed           # 예: 0.05
@@ -602,7 +602,7 @@ class SelfDrivingNode(Node):
                         s = max(self.last_avoid_s, 0.15)
 
                         twist = Twist()
-                        twist.angular.z = -1.5 - 0.6 * s
+                        twist.angular.z = -1.7 - 0.6 * s
                         v_min = self.min_wall_speed
                         v_max = self.normal_speed
                         twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
