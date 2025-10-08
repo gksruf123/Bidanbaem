@@ -281,7 +281,7 @@ class SelfDrivingNode(Node):
     
     # PID for GO_STRAIGHT
     def _drive_straight(self, lane_x, x_setpoint, twist):
-        pos_error = lane_x - x_setpoint
+        pos_error = x_setpoint - lane_x
 
         self.pid.SetPoint = 0
         self.pid.update(pos_error)
