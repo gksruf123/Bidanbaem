@@ -309,6 +309,7 @@ class SelfDrivingNode(Node):
         self.mecanum_pub.publish(Twist())
 
     def main(self):
+        firt_cw = True
         while self.is_running:
             time_start = time.time()
             try:
@@ -345,7 +346,7 @@ class SelfDrivingNode(Node):
                         elif self.start:
                             self.start_count = 0
                             if self.detected_park:
-                                self.park = True
+                                self.stop = True
                                 self.start = False
                                 self.go_finish = False
                             elif self.turn_right:
@@ -397,22 +398,27 @@ class SelfDrivingNode(Node):
                                 self.go_cw = False
                                 self.turn_right = True
                                 self.start_dist = self.cw_distance
-                                self.mul = 1.3
-                                self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
+                                self.real_turn_right = False
+                                self.mul = 0.8
+                                self.get_logger().info(f"\033[1;31m3. cross_walk distance: {self.start_dist}\033[0m")
                             elif self.detected_right and self.detected_cw:
                                 self.go_cw = False
                                 self.real_turn_right = True
                                 self.start_dist = self.cw_distance
                                 self.mul = 1.3
-                                self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
+                                self.get_logger().info(f"\033[1;31m2. cross_walk distance: {self.start_dist}\033[0m")
                             elif self.detected_park:
                                 self.start_dist = self.park_distance
-                                self.mul = 1.0
-                                self.get_logger().info(f"\033[1;31mpark distance: {self.start_dist}\033[0m")
+                                self.mul = 0.9
+                                self.get_logger().info(f"\033[1;32mpark distance: {self.start_dist}\033[0m")
                             elif self.detected_cw and self.go_cw:
                                 self.go_cw = False
                                 self.start_dist = self.cw_distance
-                                self.mul = 1.3
+                                if firt_cw:
+                                    self.mul = 1.0
+                                    firt_cw = False
+                                else:
+                                    self.mul = 1.3
                                 self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
                             elif self.traffic_signs_status != 'red':
                                 self.go_cw = True
@@ -605,5 +611,3 @@ def main():
  
 if __name__ == "__main__":
     main()
-
-    
