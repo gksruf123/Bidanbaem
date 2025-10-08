@@ -513,7 +513,7 @@ class SelfDrivingNode(Node):
 
                 if depth_m is not None:
                     y0, y1 = int(0.20*h), int(0.40*h)
-                    x0, x1 = int(0.30*w), int(0.70*w)
+                    x0, x1 = int(0.40*w), int(0.70*w)
                     roi = depth_m[y0:y1, x0:x1]
 
                     valid = np.isfinite(roi) & (roi > 0.05)
@@ -582,7 +582,7 @@ class SelfDrivingNode(Node):
 
                 # line following processing
                     status, lane_x = self.lane_detect(mask_white, mask_yellow)
-                    x_setpoint = int(w * 0.10) # 화면 중앙에서 왼쪽.
+                    x_setpoint = int(w * 0.40) # 화면 중앙에서 왼쪽.
 
                     if status == "GO_STRAIGHT":
                         self._drive_straight(lane_x, x_setpoint, twist)
