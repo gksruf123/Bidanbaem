@@ -36,9 +36,9 @@ class LaneDetector(object):
         self.lane_roi_x_end = int(self.img_width * 0.4)
 
         # 2. 횡단보도 감지를 위한 ROI
-        self.crosswalk_roi_y_start = int(self.img_height * 0.5)
-        self.crosswalk_roi_y_end = int(self.img_height * 0.9)
-        self.crosswalk_roi_x_start = int(self.img_width * 0.0)
+        self.crosswalk_roi_y_start = int(self.img_height * 0.6)
+        self.crosswalk_roi_y_end = int(self.img_height * 1.0)
+        self.crosswalk_roi_x_start = int(self.img_width * 0.1)
         self.crosswalk_roi_x_end = int(self.img_width * 1.0)
 
         # 3. 횡단보도 판단 기준: ROI 면적 대비 흰색 픽셀의 '비율'
