@@ -168,7 +168,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.6  # normal driving speed
+        self.normal_speed = 0.5  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -185,10 +185,10 @@ class SelfDrivingNode(Node):
         self.last_avoid_s = 0.0
 
         self.last_depart_time = -1e9     # 횡단보도 마지막에 멈췄던 시간 체크용. 첫 실행 때 횡단보도 무시를 방지하기 위해 초기값을 과거로 설정.
-        self.stop_cooldown = 1.5    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
+        self.stop_cooldown = 2.2    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
 
         self.last_objects_ts = time.time()
-        self.objects_timeout = 0.8  # 초
+        self.objects_timeout = 0.1  # 초
 
         self.signal_waiting = False     # 정지선 신호 대기 모드
         self.signal_window = 3.0        # 정지선에서 yolo 켜고 기다릴 시간
@@ -304,7 +304,7 @@ class SelfDrivingNode(Node):
 
         # 1. 0.5초 동안 직진
         self.get_logger().info("Moving straight for 0.5s before turning.")
-        forward_time = 0.3
+        forward_time = 0.4
         t_end_forward = time.time() + forward_time
         while time.time() < t_end_forward and self.is_running:
             twist.linear.x = self.normal_speed  # 설정된 기본 속도로 직진
@@ -369,7 +369,7 @@ class SelfDrivingNode(Node):
             twist = Twist()
 
             # 1. 주차장 앞까지 직진
-            forward_time = 2.5
+            forward_time = 3.0
             t_end_forward = time.time() + forward_time
             while time.time() < t_end_forward and self.is_running:
                 twist.linear.x = self.normal_speed  # 설정된 기본 속도로 직진
@@ -381,6 +381,7 @@ class SelfDrivingNode(Node):
             forward_time = 1.0
             t_end_forward = time.time() + forward_time
             while time.time() < t_end_forward and self.is_running:
+                twist.linear.x = 0.0
                 twist.linear.y = -0.5  # 설정된 기본 속도로 직진
                 twist.angular.z = 0.0
                 self.mecanum_pub.publish(twist)
