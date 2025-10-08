@@ -481,6 +481,11 @@ class SelfDrivingNode(Node):
                             # self.traffic_signs_status = None
                             self.mecanum_pub.publish(Twist())
                             continue
+                        
+                    if self.stop:
+                        self.get_logger().info("\033[1;31mstate: **stop**\033[0m")
+                        self.park_action()
+                        self.is_start = False
 
 
                     # self.detected_cw = False
