@@ -191,7 +191,7 @@ class SelfDrivingNode(Node):
         self.objects_timeout = 1.0  # 초
 
         self.signal_waiting = False     # 정지선 신호 대기 모드
-        self.signal_window = 2.0        # 정지선에서 yolo 켜고 기다릴 시간
+        self.signal_window = 5.0        # 정지선에서 yolo 켜고 기다릴 시간
         self.signal_deadline = 0.0
         self.red_hold = False           # 빨간불 봤을 때 초록불 나올 때까지 대기하는 플래그
         self.max_red_wait = 10.0        # 빨간불 대기 최대 (혹시 몰라서. 없어도 됨.)
@@ -582,7 +582,8 @@ class SelfDrivingNode(Node):
 
                 # line following processing
                     status, lane_x = self.lane_detect(mask_white, mask_yellow)
-                    x_setpoint = int(w * 0.35) # 화면 중앙에서 왼쪽.
+                    resized_w = self.lane_detect.img_width
+                    x_setpoint = int(resized_w * 0.20) # 화면 중앙에서 왼쪽.
 
                     if status == "GO_STRAIGHT":
                         self._drive_straight(lane_x, x_setpoint, twist)
