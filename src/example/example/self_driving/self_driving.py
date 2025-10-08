@@ -281,7 +281,7 @@ class SelfDrivingNode(Node):
     
     # PID for GO_STRAIGHT
     def _drive_straight(self, lane_x, x_setpoint, twist):
-        pos_error = lane_x - x_setpoint
+        pos_error = x_setpoint - lane_x
 
         self.pid.SetPoint = 0
         self.pid.update(pos_error)
@@ -583,7 +583,7 @@ class SelfDrivingNode(Node):
                 # line following processing
                     status, lane_x = self.lane_detect(mask_white, mask_yellow)
                     resized_w = self.lane_detect.img_width
-                    x_setpoint = int(resized_w * 0.20) # 화면 중앙에서 왼쪽.
+                    x_setpoint = int(resized_w * 0.10) # 화면 중앙에서 왼쪽.
                     self.get_logger().info(f"lane_x: {lane_x}")
 
                     if status == "GO_STRAIGHT":
@@ -591,6 +591,7 @@ class SelfDrivingNode(Node):
 
                     elif status == "STOP_LINE":
                         now = time.time()
+                        self.get_logger().info("STOP_LINE")
 
                         # 이미 객체 인식 중이면 계속 인식 유지
                         if self.signal_waiting:
