@@ -293,13 +293,28 @@ class SelfDrivingNode(Node):
     def _do_right_turn(self):
         # 우회전 표지판 봤을 때 실행되는 메서드
         twist = Twist()
-        turn_time = 1.2
-        t_end = time.time() + turn_time
-        while time.time() < t_end and self.is_running:
+
+        # 1. 0.5초 동안 직진
+        self.get_logger().info("Moving straight for 0.5s before turning.")
+        forward_time = 0.3
+        t_end_forward = time.time() + forward_time
+        while time.time() < t_end_forward and self.is_running:
+            twist.linear.x = self.normal_speed  # 설정된 기본 속도로 직진
+            twist.angular.z = 0.0
+            self.mecanum_pub.publish(twist)
+            time.sleep(0.02)
+
+        # 2. 0.8초 동안 제자리에서 우회전 (원래 코드)
+        self.get_logger().info("Turning right for 0.8s.")
+        turn_time = 0.8
+        t_end_turn = time.time() + turn_time
+        while time.time() < t_end_turn and self.is_running:
             twist.linear.x = 0.0
             twist.angular.z = -2.0
             self.mecanum_pub.publish(twist)
             time.sleep(0.02)
+
+        # 3. 마지막에 완전히 정지
         self.mecanum_pub.publish(Twist())
 
     def _enter_signal_wait(self):
@@ -634,7 +649,7 @@ class SelfDrivingNode(Node):
                     # 아무것도 안 보이면 천천히 왼쪽으로 돌면서 차선 찾기
                     elif status is None:
                         twist.linear.x = self.normal_speed
-                        twist.angular.z = 0.3
+                        twist.angular.z = 0.5
                         self.mecanum_pub.publish(twist)
                         self.get_logger().info("there isn't lane_x")
                     
