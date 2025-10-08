@@ -168,7 +168,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.4  # normal driving speed
+        self.normal_speed = 0.5  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -188,7 +188,7 @@ class SelfDrivingNode(Node):
         self.stop_cooldown = 1.0    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
 
         self.last_objects_ts = time.time()
-        self.objects_timeout = 1.0  # 초
+        self.objects_timeout = 2.0  # 초
 
         self.signal_waiting = False     # 정지선 신호 대기 모드
         self.signal_window = 5.0        # 정지선에서 yolo 켜고 기다릴 시간
