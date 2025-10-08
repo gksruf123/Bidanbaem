@@ -194,7 +194,9 @@ class SelfDrivingNode(Node):
         self.signal_window = 2.0        # 정지선에서 yolo 켜고 기다릴 시간
         self.signal_deadline = 0.0
         self.red_hold = False           # 빨간불 봤을 때 초록불 나올 때까지 대기하는 플래그
-        self.max_red_wait = 10.0         # 빨간불 대기 최대 (혹시 몰라서. 없어도 됨.)
+        self.max_red_wait = 10.0        # 빨간불 대기 최대 (혹시 몰라서. 없어도 됨.)
+
+        self.stop_flag = True           # 벽 마주치고 우회전 했을 때만 다시 횡단보도 인식하게 만들기 위함.
 
     def get_node_state(self, request, response):
         response.success = True
@@ -278,17 +280,15 @@ class SelfDrivingNode(Node):
             self.depth_image = depth_m
     
     # PID for GO_STRAIGHT
-    def _drive_straight(self, lane_x, lane_angle, x_setpoint, angle_setpoint, twist):
+    def _drive_straight(self, lane_x, x_setpoint, twist):
         pos_error = lane_x - x_setpoint
-        angle_error = lane_angle - angle_setpoint
-        total_error = 0.8 * pos_error + 0.2 * angle_error
 
         self.pid.SetPoint = 0
-        self.pid.update(total_error)
+        self.pid.update(pos_error)
         twist.linear.x = self.normal_speed
         twist.angular.z = common.set_range(self.pid.output, -0.3, 0.3)
         self.get_logger().info(
-            f"pos_error={pos_error:.2f}, angle_error={angle_error:.2f}, total={total_error:.2f}"
+            f"pos_error={pos_error:.2f}"
         )
         self.mecanum_pub.publish(twist)
 
@@ -344,13 +344,13 @@ class SelfDrivingNode(Node):
 
             # 오돔 기반 주차 시퀀스: 전진 1.8m
             self._move_relative_odom(dx=1.8, dy=0.0,
-                                     vx_max=0.20, vy_max=0.18,
+                                     vx_max=0.50, vy_max=0.18,
                                      stop_tolerance=0.03, timeout_s=8.0)
             time.sleep(0.2)
 
             # 우측으로 0.3m
             self._move_relative_odom(dx=0.0, dy=-0.3,
-                                     vx_max=0.20, vy_max=0.18,
+                                     vx_max=0.50, vy_max=0.18,
                                      stop_tolerance=0.03, timeout_s=8.0)
             
             # 정지 및 주행 플래그 False로 바꿈으로써 주행 종료
@@ -502,7 +502,7 @@ class SelfDrivingNode(Node):
                 h, w = image.shape[:2]
 
                 # obtain the binary image of the lane
-                binary_image = self.lane_detect.get_binary(image)
+                visual_image, mask_white, mask_yellow = self.lane_detect.get_binary(image.copy())
 
                 twist = Twist()
 
@@ -558,6 +558,8 @@ class SelfDrivingNode(Node):
                             twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
 
                             self.mecanum_pub.publish(twist)
+
+                            self.stop_flag = True   # 횡단보도 다시 인식하게 만들기.
                 
                     if (not wall_turning) and (time.time() < self.avoid_until):
                         wall_turning = True
@@ -579,12 +581,11 @@ class SelfDrivingNode(Node):
                     # 즉, 회피 기동 중일 때는 차선 유지 로직이 아예 실행조차 안 됨.                              
 
                 # line following processing
-                    result_image, status, lane_angle, lane_x = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
-                    x_setpoint = int(w * 0.40) # 화면 중앙에서 살짝 왼쪽.
-                    angle_setpoint = 80
+                    status, lane_x = self.lane_detect(mask_white, mask_yellow)
+                    x_setpoint = int(w * 0.20) # 화면 중앙에서 왼쪽.
 
                     if status == "GO_STRAIGHT":
-                        self._drive_straight(lane_x, lane_angle, x_setpoint, angle_setpoint, twist)
+                        self._drive_straight(lane_x, x_setpoint, twist)
 
                     elif status == "STOP_LINE":
                         now = time.time()
@@ -594,23 +595,25 @@ class SelfDrivingNode(Node):
                             if self._tick_signal_wait():
                                 continue
                             # 인식 끝나면 라인팔로우 복귀
-                            self._drive_straight(lane_x, lane_angle, x_setpoint, angle_setpoint, twist)
+                            self._drive_straight(lane_x, x_setpoint, twist)
                             continue
 
                         # 2) 횡단보도 한번 인식한 후로 일정 시간 동안은 횡단보도 무시.
                         if now - self.last_depart_time < self.stop_cooldown:
-                            self._drive_straight(lane_x, lane_angle, x_setpoint, angle_setpoint, twist)
+                            self._drive_straight(lane_x, x_setpoint, twist)
                             continue
 
-                        # 3) 횡단보도 처음 마주치면 정지 후 객체 인식
-                        self.mecanum_pub.publish(Twist())
-                        self._enter_signal_wait()
-                        continue
+                        # 3) 횡단보도 처음 마주치면 정지 후 객체 인식 (벽 앞에서 우회전했을 때만 다시)
+                        if self.stop_flag:
+                            self.stop_flag = False
+                            self.mecanum_pub.publish(Twist())
+                            self._enter_signal_wait()
+                            continue
                     
                     # 아무것도 안 보이면 천천히 왼쪽으로 돌면서 차선 찾기
                     elif status is None:
                         twist.linear.x = self.normal_speed
-                        twist.angular.z = 0.0
+                        twist.angular.z = 0.1
                         self.mecanum_pub.publish(twist)
                     
                     else:
@@ -627,7 +630,7 @@ class SelfDrivingNode(Node):
 
             self.result_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
 
-            self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(binary_image, "mono8"))
+            self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(visual_image, "bgr8"))
             # 이건 나중에 삭제하기. rqt로 이진화 차선 확인하려고 만든 거니까.
 
            
