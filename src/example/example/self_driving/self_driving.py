@@ -525,7 +525,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.10, 0.30
+                        NEAR, FAR = 0.20, 0.50
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
