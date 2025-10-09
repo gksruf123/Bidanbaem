@@ -604,7 +604,7 @@ class SelfDrivingNode(Node):
     # Obtain the target detection result
     def get_object_callback(self, msg):
         self.objects_info = msg.objects
-        if self.object_callback_cnt < 3:
+        if self.object_callback_cnt < 0:
             self.object_callback_cnt += 1
         else:
             self.object_callback_cnt = 0

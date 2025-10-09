@@ -200,6 +200,7 @@ class YoloV5Ros2(Node):
 
         # 클래스 이름 자동 로드(있으면 사용, 없으면 cls_#)
         class_names = _load_class_names(package_share_directory, model_base)
+        self.frame_cnt = 0
 
         # 기존 self.yolov5 를 ONNX 호환 래퍼로 대체 (predict/ names 시그니처 동일)
         self.yolov5 = OrtYoloCompat(
@@ -250,6 +251,7 @@ class YoloV5Ros2(Node):
             self.start = True
             response.success = True
             response.message = "start"
+            self.frame_cnt = 0
         # else:
             # response.success = False
             # response.message = "fail"
@@ -269,6 +271,10 @@ class YoloV5Ros2(Node):
 
     def image_callback(self, rgb_msg, depth_msg):
         if not self.start:
+            return
+        
+        if self.frame_cnt < 6:
+            self.frame_cnt += 1
             return
 
         image = self.bridge.imgmsg_to_cv2(rgb_msg, "rgb8")
