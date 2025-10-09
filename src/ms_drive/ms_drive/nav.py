@@ -243,7 +243,7 @@ class Navigation(Node):
         self.target_update_threshold = 0.15**2 # squared value for comparison
         
         # Control parameters for mecanum wheel. 
-        self.max_linear_speed = 0.4 # m/s
+        self.max_linear_speed = 1.0 # m/s
         self.max_strafe_speed = self.max_linear_speed * 0.7
         self.max_angular_speed = 0.3
 
@@ -269,10 +269,12 @@ class Navigation(Node):
         self.yolo_min_conf = 0.4
         """minimum count to act"""
         # yolov5 service clients
+        
         self.yolov5_start_client = self.create_client(Trigger, '/yolov5/start')
         self.yolov5_stop_client = self.create_client(Trigger, '/yolov5/stop')
         self.yolov5_start_client.wait_for_service()
         self.yolov5_stop_client.wait_for_service()
+        self.yolo5_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.yolo_cb, 1)
 
         # publishes, services. Direct driving for now.
         # self.create_service(Trigger, '/ms_driver/arrived', self.arrive_srv_cb)
@@ -471,7 +473,7 @@ class Navigation(Node):
         self.get_logger().info('activating yolo')
         self.yolo_active = True
         self.send_request(self.yolov5_start_client, Trigger.Request())
-        self.yolo5_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.yolo_cb, 5)
+        # self.yolo5_sub = self.create_subscription(ObjectsInfo, '/yolov5_ros2/object_detect', self.yolo_cb, 1)
 
     def deactivate_yolo(self):
         self.get_logger().info('deactivating yolo')
