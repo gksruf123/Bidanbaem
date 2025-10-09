@@ -15,6 +15,7 @@ import sdk.pid as pid
 import sdk.fps as fps
 from rclpy.node import Node
 import sdk.common as common
+from gpiozero import LED
 from math import atan2, asin, cos, pi, sin
 # from app.common import Heart
 from cv_bridge import CvBridge
@@ -61,6 +62,10 @@ class SelfDrivingNode(Node):
         self.get_logger().info('ButtonPressReceiver node started')
         self.publisher_ = self.create_publisher(RGBStates, '/ros_robot_controller/set_rgb', 10)
         self.get_logger().info('RGB Controller Node has been started.')
+        self.left_yellow_led = LED(16)
+        self.red_led = LED(12)
+        self.green_led = LED(24)
+        self.right_yellow_led = LED(23)
 
         self.create_service(Trigger, '~/enter', self.enter_srv_callback) # enter the game
         self.create_service(Trigger, '~/exit', self.exit_srv_callback) # exit the game
@@ -146,9 +151,7 @@ class SelfDrivingNode(Node):
         self.object_callback_cnt = 0
 
         self.start_turn_time_stamp = 0
-
-        self.led1_current_color_index = 'red'
-        self.led2_current_color_index = 'red'
+        
         self.led1_color = (0, 0, 0)
         self.led2_color = (0, 0, 0)
         self.led_colors = {
@@ -348,6 +351,10 @@ class SelfDrivingNode(Node):
                                 if self.traffic_signs_status != 'red':
                                     self.wait = False
                                     self.start = True
+                                    self.green_led.on()
+                                    self.red_led.off()
+                                    self.left_yellow_led.off()
+                                    self.right_yellow_led.off()
                                     led_msg = RGBStates()
                                     self.led1_color = self.led_colors['green']
                                     self.led2_color = self.led_colors['green']
@@ -375,12 +382,20 @@ class SelfDrivingNode(Node):
                             elif self.turn_right:
                                 self.start = False
                                 self.turn = True
+                                self.green_led.off()
+                                self.red_led.off()
+                                self.left_yellow_led.off()
+                                self.right_yellow_led.blink(0.5)
                                 self.turn_finish = False
                             # 조금 갔다가 우회전 하는 것 구현
                             # elif (self.right_distance != -1 and self.right_distance < 300):
                             else:
                                 self.stop_time = time.time()
                                 self.wait = True
+                                self.green_led.off()
+                                self.red_led.on()
+                                self.left_yellow_led.off()
+                                self.right_yellow_led.off()
                                 led_msg = RGBStates()
                                 self.led1_color = self.led_colors['red']
                                 self.led2_color = self.led_colors['red']
@@ -395,6 +410,10 @@ class SelfDrivingNode(Node):
                             self.turn_right = False
                             self.turn_count = 0
                             self.wait = True
+                            self.green_led.off()
+                            self.red_led.on()
+                            self.left_yellow_led.off()
+                            self.right_yellow_led.off()
                             led_msg = RGBStates()
                             self.led1_color = self.led_colors['red']
                             self.led2_color = self.led_colors['red']
@@ -556,6 +575,10 @@ class SelfDrivingNode(Node):
                         self.led_time = time.time()
                     self.mecanum_pub.publish(Twist())
                     self.publisher_.publish(led_msg)
+                    self.green_led.blink(0.5)
+                    self.red_led.blink(0.5)
+                    self.left_yellow_led.blink(0.5)
+                    self.right_yellow_led.blink(0.5)
 
             else:
                 time.sleep(0.01)
