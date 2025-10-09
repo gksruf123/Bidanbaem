@@ -164,13 +164,16 @@ class SelfDrivingNode(Node):
         }
         self.button_pressed = False
         self.led_time = time.time()
+        self.depth_detect = True
 
     def depth_callback(self, depth_msg):
-        depth = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')
-        # 깊이 값 보정 (0 → 주변값으로 보간)
-        depth_uint16 = depth.astype(np.uint16)  # inpaint는 8/16bit만 지원
-        mask = (depth_uint16 == 0).astype('uint8')    # 0인 부분을 마스크로 지정
-        self.depth = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
+        if self.depth_detect:
+            depth = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')
+            # 깊이 값 보정 (0 → 주변값으로 보간)
+            depth_uint16 = depth.astype(np.uint16)  # inpaint는 8/16bit만 지원
+            mask = (depth_uint16 == 0).astype('uint8')    # 0인 부분을 마스크로 지정
+            self.depth = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
+            self.depth_detect = False
 
     def button_callback(self, msg):
         self.is_start = False
@@ -180,6 +183,7 @@ class SelfDrivingNode(Node):
     def call_start(self):
         self.wait_can_finish = False
         self.detect = True
+        self.depth_detect = True
         req = Trigger.Request()
         future = self.start_yolov5_client.call_async(req)
         future.add_done_callback(self._on_start_response)
@@ -196,6 +200,7 @@ class SelfDrivingNode(Node):
 
     def call_stop(self):
         self.detect = False
+        self.depth_detect = False
         req = Trigger.Request()
         future = self.stop_yolov5_client.call_async(req)
         future.add_done_callback(self._on_stop_response)
