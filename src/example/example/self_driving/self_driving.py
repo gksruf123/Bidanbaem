@@ -327,6 +327,7 @@ class SelfDrivingNode(Node):
 
     def _enter_signal_wait(self):
         # 횡단보도에서 처음 멈췄을 때 실행되는 메서드
+        self.objects_info = []
         now = time.time()
         self.signal_waiting = True
         self.signal_deadline = now + self.signal_window
