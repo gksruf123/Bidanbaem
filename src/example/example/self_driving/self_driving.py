@@ -27,7 +27,7 @@ from sdk.common import colors, plot_one_box
 from example.self_driving import lane_detect
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
-from ros_robot_controller_msgs.msg import BuzzerState, SetPWMServoState, PWMServoState
+from ros_robot_controller_msgs.msg import BuzzerState, SetPWMServoState, PWMServoState, ButtonState, RGBState, RGBStates
 
 class SelfDrivingNode(Node):
     def __init__(self, name):
@@ -57,6 +57,11 @@ class SelfDrivingNode(Node):
         self.result_publisher = self.create_publisher(Image, '~/image_result', 1)
         self.odom_subscriber = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
 
+        self.create_subscription(ButtonState, '/ros_robot_controller/button', self.button_callback, 10)
+        self.get_logger().info('ButtonPressReceiver node started')
+        self.publisher_ = self.create_publisher(RGBStates, '/ros_robot_controller/set_rgb', 10)
+        self.get_logger().info('RGB Controller Node has been started.')
+
         self.create_service(Trigger, '~/enter', self.enter_srv_callback) # enter the game
         self.create_service(Trigger, '~/exit', self.exit_srv_callback) # exit the game
         self.create_service(SetBool, '~/set_running', self.set_running_srv_callback)
@@ -68,7 +73,6 @@ class SelfDrivingNode(Node):
         self.start_yolov5_client.wait_for_service()
         self.stop_yolov5_client = self.create_client(Trigger, '/yolov5/stop', callback_group=timer_cb_group)
         self.stop_yolov5_client.wait_for_service()
-
         self.timer = self.create_timer(0.0, self.init_process, callback_group=timer_cb_group)
 
     def init_process(self):
@@ -142,6 +146,20 @@ class SelfDrivingNode(Node):
         self.object_callback_cnt = 0
 
         self.start_turn_time_stamp = 0
+
+        self.led1_current_color_index = 'red'
+        self.led2_current_color_index = 'red'
+        self.led_colors = {
+            'red': (255, 0, 0),
+            'green': (0, 255, 0),
+            'yellow': (255, 255, 0),
+        }
+        self.button_pressed = False
+        self.led_time = time.time()
+
+    def button_callback(self, msg):
+        self.button_pressed = True
+        self.get_logger().info(f"[Button] pressed")
 
     def call_start(self):
         self.wait_can_finish = False
@@ -314,7 +332,7 @@ class SelfDrivingNode(Node):
 
                 twist = Twist()
 
-                if self.is_start: # 맨 처음 'green' 감지
+                if self.is_start and self.button_pressed: # 맨 처음 'green' 감지
                     # line following processing
                     result_image, left_lane_x, _ = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
                     self.get_logger().info(f"\033[1;32mleft_lane_x: {left_lane_x}\033[0m")
@@ -325,6 +343,13 @@ class SelfDrivingNode(Node):
                                 if self.traffic_signs_status != 'red':
                                     self.wait = False
                                     self.start = True
+                                    led_msg = RGBStates()
+                                    led1_color = self.led_colors['green']
+                                    led2_color = self.led_colors['green']
+                                    led_msg.states = [
+                                        RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
+                                        RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                                    ]
                                     self.get_logger().info(f"\033[1;32mwait is done call_stop\033[0m")
                                     self.call_stop()
                                     self.go_finish = False
@@ -332,6 +357,13 @@ class SelfDrivingNode(Node):
                             self.start_count = 0
                             if self.detected_park:
                                 self.stop = True
+                                led_msg = RGBStates()
+                                led1_color = (0, 0, 0)
+                                led2_color = (0, 0, 0)
+                                led_msg.states = [
+                                    RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
+                                    RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                                ]
                                 self.stop_time = time.time()
                                 self.start = False
                                 self.go_finish = False
@@ -344,6 +376,13 @@ class SelfDrivingNode(Node):
                             else:
                                 self.stop_time = time.time()
                                 self.wait = True
+                                led_msg = RGBStates()
+                                led1_color = self.led_colors['red']
+                                led2_color = self.led_colors['red']
+                                led_msg.states = [
+                                    RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
+                                    RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                                ]
                                 self.get_logger().info(f"\033[1;32mstart is done call_start\033[0m")
                                 self.call_start()
                                 self.start = False
@@ -351,6 +390,13 @@ class SelfDrivingNode(Node):
                             self.turn_right = False
                             self.turn_count = 0
                             self.wait = True
+                            led_msg = RGBStates()
+                            led1_color = self.led_colors['red']
+                            led2_color = self.led_colors['red']
+                            led_msg.states = [
+                                RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
+                                RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                            ]
                             self.get_logger().info(f"\033[1;32mturn is done call_start\033[0m")
                             self.call_start()
                             self.turn = False
@@ -429,6 +475,18 @@ class SelfDrivingNode(Node):
                     if self.turn:
                         self.pid.clear()
                         self.get_logger().info("\033[1;31mstate: **turn**\033[0m")
+                        led_msg = RGBStates()
+                        if time.time() - self.led_time > 0.5:
+                            if led1_color == self.led_colors['yellow']:
+                                led1_color == (0, 0, 0)
+                            else:
+                                led1_color = self.led_colors['yellow']
+                            led2_color = (0, 0, 0)
+                            led_msg.states = [
+                                RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
+                                RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                            ]
+                            self.led_time = time.time()
                         twist.linear.x = 0.0
                         twist.angular.z = self.turn_angular_z
                         if self.turn_count == 0:
