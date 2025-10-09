@@ -268,10 +268,10 @@ class YoloV5Ros2(Node):
         # 깊이 값 보정 (0 → 주변값으로 보간)
         depth_uint16 = depth.astype(np.uint16)  # inpaint는 8/16bit만 지원
         mask = (depth_uint16 == 0).astype('uint8')    # 0인 부분을 마스크로 지정
-        depth_inpaint = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
+        depth = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
 
         # 다시 float로 변환 (필요하다면)
-        depth = depth_inpaint.astype(np.float32)
+        # depth = depth_inpaint.astype(np.float32)
 
         self.result_msg.detections.clear()
         self.result_msg.header.frame_id = "camera"
