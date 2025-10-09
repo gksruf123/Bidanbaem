@@ -72,7 +72,7 @@ class SelfDrivingNode(Node):
 
         self._yolo_is_on = False
         self._yolo_last_toggle = 0.0
-        self._yolo_min_interval = 0.5   # 연속 토글 최소 간격(초) - 파이프라인 흔들림 방지
+        self._yolo_min_interval = 0.1   # 연속 토글 최소 간격(초) - 파이프라인 흔들림 방지
         self._yolo_timer = None         # enable-for 타이머 핸들
 
         self.odom_pose = None
@@ -168,7 +168,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.5  # normal driving speed
+        self.normal_speed = 0.7  # normal driving speed
         self.slow_down_speed = 0.1  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -185,10 +185,10 @@ class SelfDrivingNode(Node):
         self.last_avoid_s = 0.0
 
         self.last_depart_time = -1e9     # 횡단보도 마지막에 멈췄던 시간 체크용. 첫 실행 때 횡단보도 무시를 방지하기 위해 초기값을 과거로 설정.
-        self.stop_cooldown = 2.2    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
+        self.stop_cooldown = 2.0    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
 
         self.last_objects_ts = time.time()
-        self.objects_timeout = 0.1  # 초
+        self.objects_timeout = 0.01  # 초
 
         self.signal_waiting = False     # 정지선 신호 대기 모드
         self.signal_window = 3.0        # 정지선에서 yolo 켜고 기다릴 시간
@@ -307,7 +307,7 @@ class SelfDrivingNode(Node):
         forward_time = 0.4
         t_end_forward = time.time() + forward_time
         while time.time() < t_end_forward and self.is_running:
-            twist.linear.x = self.normal_speed  # 설정된 기본 속도로 직진
+            twist.linear.x = 0.7  # 설정된 기본 속도로 직진
             twist.angular.z = 0.0
             self.mecanum_pub.publish(twist)
             time.sleep(0.02)
@@ -352,7 +352,7 @@ class SelfDrivingNode(Node):
         # 2) 초록불일 경우 즉시 출발
         if 'green' in classes:
             self.get_logger().info("GREEEEEEN!!!")
-            self.yolo_stop(delay_s=0.3)
+            self.yolo_stop(delay_s=0.1)
             self.signal_waiting = False
             self.red_hold = False
             self.last_depart_time = time.time()
@@ -361,7 +361,7 @@ class SelfDrivingNode(Node):
         # 3) 우회전 표지 (빨간불 없을 때만 유효)
         if 'right' in classes and not self.red_hold:
             self._do_right_turn()
-            self.yolo_stop(delay_s=0.0)
+            self.yolo_stop(delay_s=0.1)
             self.signal_waiting = False
             self.last_depart_time = time.time()
 
@@ -372,7 +372,7 @@ class SelfDrivingNode(Node):
             forward_time = 3.0
             t_end_forward = time.time() + forward_time
             while time.time() < t_end_forward and self.is_running:
-                twist.linear.x = self.normal_speed  # 설정된 기본 속도로 직진
+                twist.linear.x = 0.7  # 설정된 기본 속도로 직진
                 twist.angular.z = 0.0
                 self.mecanum_pub.publish(twist)
                 time.sleep(0.02)    
@@ -409,7 +409,7 @@ class SelfDrivingNode(Node):
             self.get_logger().info("WAIT.....")
             # 최대 대기 시간 = 타임아웃
             if self.max_red_wait and now > (self.signal_deadline + self.max_red_wait):
-                self.yolo_stop(delay_s=0.3)
+                self.yolo_stop(delay_s=0.1)
                 self.signal_waiting = False
                 self.red_hold = False
                 self.last_depart_time = time.time()
@@ -420,7 +420,7 @@ class SelfDrivingNode(Node):
         # 5) 아무 것도 안 보일 경우 최소 대기 시간만큼만 기다렸다가 출발
         if now > self.signal_deadline:
             self.get_logger().info("YOLO couldn't detect anything........")
-            self.yolo_stop(delay_s=0.3)
+            self.yolo_stop(delay_s=0.1)
             self.signal_waiting = False
             self.last_depart_time = time.time()
             return False
@@ -537,7 +537,7 @@ class SelfDrivingNode(Node):
                     if 'green' in classes:
                         self.get_logger().info("Initial GREEN signal detected! Starting driving.")
                         # 출발 후에는 신호 감지가 필요 없으므로 1초 뒤에 YOLO를 끕니다.
-                        self.yolo_stop(delay_s=1.0) 
+                        self.yolo_stop(delay_s=0.1) 
                         break # 무한 반복을 탈출하고 본격적인 주행 시작
 
                     if 'red' in classes:
@@ -571,7 +571,7 @@ class SelfDrivingNode(Node):
                     depth_m = None if self.depth_image is None else self.depth_image.copy()
 
                 if depth_m is not None:
-                    y0, y1 = int(0.20*h), int(0.40*h)
+                    y0, y1 = int(0.10*h), int(0.50*h)
                     x0, x1 = int(0.40*w), int(0.70*w)
                     roi = depth_m[y0:y1, x0:x1]
 
@@ -584,7 +584,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.30, 0.55
+                        NEAR, FAR = 0.35, 0.52
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
@@ -609,7 +609,7 @@ class SelfDrivingNode(Node):
                                 s = max(self.last_avoid_s, 0.15)   # 최소한의 회피 유지(필요시 0.10~0.20 튜닝)
 
                             # === 가변 조향 ===
-                            twist.angular.z = -1.3 - 0.6 * s      # -0.2 ~ -0.8 근처
+                            twist.angular.z = -1.4 - 0.6 * s      # -0.2 ~ -0.8 근처
 
                             # === 가변 선속도 ===
                             v_min = self.min_wall_speed           # 예: 0.05
@@ -632,7 +632,7 @@ class SelfDrivingNode(Node):
                         s = max(self.last_avoid_s, 0.15)
 
                         twist = Twist()
-                        twist.angular.z = -1.3 - 0.6 * s
+                        twist.angular.z = -1.4 - 0.6 * s
                         v_min = self.min_wall_speed
                         v_max = self.normal_speed
                         twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
@@ -656,16 +656,16 @@ class SelfDrivingNode(Node):
                         now = time.time()
                         self.get_logger().info("STOP_LINE")
 
+                        # 2) 횡단보도 한번 인식한 후로 일정 시간 동안은 횡단보도 무시.
+                        if now - self.last_depart_time < self.stop_cooldown:
+                            self._drive_straight(lane_x, x_setpoint, twist)
+                            continue
+
                         # 이미 객체 인식 중이면 계속 인식 유지
                         if self.signal_waiting:
                             if self._tick_signal_wait():
                                 continue
                             # 인식 끝나면 라인팔로우 복귀
-                            self._drive_straight(lane_x, x_setpoint, twist)
-                            continue
-
-                        # 2) 횡단보도 한번 인식한 후로 일정 시간 동안은 횡단보도 무시.
-                        if now - self.last_depart_time < self.stop_cooldown:
                             self._drive_straight(lane_x, x_setpoint, twist)
                             continue
 
