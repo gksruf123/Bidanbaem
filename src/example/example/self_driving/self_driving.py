@@ -175,25 +175,7 @@ class SelfDrivingNode(Node):
                 self.get_logger().warn("[STOP] 응답이 None입니다.")
         except Exception as e:
             self.get_logger().error(f"[STOP] 서비스 호출 실패: {e}")
-    '''
-    def call_start(self):
-        req = Trigger.Request()
-        future = self.start_yolov5_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
-        if future.result() is not None:
-            self.get_logger().info(f"Start response: {future.result().message}")
-        else:
-            self.get_logger().error("Failed to call /yolov5/start")
-
-    def call_stop(self):
-        req = Trigger.Request()
-        future = self.stop_yolov5_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
-        if future.result() is not None:
-            self.get_logger().info(f"Stop response: {future.result().message}")
-        else:
-            self.get_logger().error("Failed to call /yolov5/stop")
-    '''
+    
     def get_node_state(self, request, response):
         response.success = True
         return response
@@ -377,11 +359,6 @@ class SelfDrivingNode(Node):
 
                     if self.wait:
                         self.get_logger().info("\033[1;31mstate: **wait**\033[0m")
-                        # self.detected_cw = False
-                        # self.detected_go = False
-                        # self.detected_right = False
-                        # self.detected_park = False
-                        # self.traffic_signs_status = None
                         twist.linear.x = 0.0
                         if left_lane_x == -1:
                             twist.angular.z = 0.15
@@ -394,9 +371,6 @@ class SelfDrivingNode(Node):
                         self.get_logger().info("\033[1;31mstate: **start**\033[0m")
                         twist.linear.x = self.slow_go_linear_x
                         if self.start_count == 0:
-                            # self.get_logger().info(f"\033[1;31m1. self.detected_cw: {self.detected_cw}\033[0m")
-                            # self.get_logger().info(f"\033[1;31m2. detect sign: {self.traffic_signs_status} {self.detected_go} {self.detected_right}\033[0m")
-                            # self.get_logger().info(f"\033[1;31m3. self.sign_distance > 400: {self.sign_distance}\033[0m")
                             self.get_logger().info(f"\033[1;31mdetected right: {self.detected_right}, detected: {self.detected_cw}\033[0m")
                             if self. real_turn_right:
                                 self.go_cw = False
@@ -434,15 +408,6 @@ class SelfDrivingNode(Node):
                             else:
                                 self.get_logger().info("RED-RED-RED-RED-RED-RED-RED-RED")
                                 continue
-                            # if self.detected_cw and (self.traffic_signs_status != None or self.detected_go == True or self.detected_right == True) and self.sign_distance > 400:
-                            #     self.start_dist = self.cw_distance
-                            #     self.mul = 1.3
-                            #     self.get_logger().info(f"\033[1;31mcross_walk distance: {self.start_dist}\033[0m")
-                            # else:
-                            #     self.turn_right = True
-                            #     self.start_dist = self.fence_distance
-                            #     self.mul = 1.3
-                            #     self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
 
                             self.start_count += 1
                             self.basis_start_point_x, self.basis_start_point_y = self.position_x, self.position_y
@@ -451,11 +416,6 @@ class SelfDrivingNode(Node):
                         if max(abs(self.position_x - self.basis_start_point_x), abs(self.position_y - self.basis_start_point_y)) * 1000 > self.start_dist - (200 * self.mul):   # odom(m)과 distance(mm)의 단위를 고려하지 않음
                             self.get_logger().info(f"\033[1;31m**go finish**\033[0m")
                             self.go_finish = True
-                            # self.detected_cw = False
-                            # self.detected_go = False
-                            # self.detected_right = False
-                            # self.detected_park = False
-                            # self.traffic_signs_status = None
                             self.mecanum_pub.publish(Twist())
                             continue
                         if left_lane_x >= 0 and not self.stop:
@@ -479,11 +439,6 @@ class SelfDrivingNode(Node):
                         if abs((self.basis_turn_point - self.degree + 180) % 360 - 180) > 80:
                             self.get_logger().info("turn was finished~~~~~~~~~~~~~~")
                             self.turn_finish = True
-                            # self.detected_cw = False
-                            # self.detected_go = False
-                            # self.detected_right = False
-                            # self.detected_park = False
-                            # self.traffic_signs_status = None
                             self.mecanum_pub.publish(Twist())
                             continue
                         
@@ -518,31 +473,8 @@ class SelfDrivingNode(Node):
                             twist.angular.z = 0.0
                             self.is_start = False
 
-
-                    # self.detected_cw = False
-                    # self.detected_go = False
-                    # self.detected_right = False
-                    # self.detected_park = False
-                    # self.traffic_signs_status = None
-
                     self.get_logger().info(f"\033[1;32mx: {twist.linear.x}, y: {twist.linear.y}, z: {twist.angular.z}\033[0m")
                     self.mecanum_pub.publish(twist)
-                    # self.mecanum_pub.publish(Twist())
-
-                
-                    # if self.objects_info:
-                    #     for i in self.objects_info:
-                    #         box = i.box
-                    #         class_name = i.class_name
-                    #         cls_conf = i.score
-                    #         cls_id = self.classes.index(class_name)
-                    #         color = colors(cls_id, True)
-                    #         plot_one_box(
-                    #             box,
-                    #             result_image,
-                    #             color=color,
-                    #             label="{}:{:.2f}".format(class_name, cls_conf),
-                    #         )
                 else:
                     self.mecanum_pub.publish(Twist())
 
@@ -636,15 +568,6 @@ class SelfDrivingNode(Node):
 
                     self.wait_can_finish = True
                     self.get_logger().info(f"\033[1;32mdetect something!!!!\033[0m")
-                        # self.get_logger().info(f"\033[1;31m**detected {class_name}**\033[0m")
-
-                    # if class_name == 'crosswalk':
-                    #     self.get_logger().info(f"\033[1;31m{class_name}: {cw_distance}\033[0m")
-                    # else:
-                    #     self.get_logger().info(f"\033[1;32m{class_name}: {cw_distance}\033[0m")
-                
-
-                    # self.get_logger().info('\033[1;32m%s\033[0m' % class_name)
 
 def main():
     node = SelfDrivingNode('self_driving')
