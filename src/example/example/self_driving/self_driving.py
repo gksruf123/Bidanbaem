@@ -386,7 +386,7 @@ class SelfDrivingNode(Node):
                                 self.green_led.off()
                                 self.red_led.off()
                                 self.left_yellow_led.off()
-                                self.right_yellow_led.blink(0.5)
+                                self.right_yellow_led.blink(0.25)
                                 self.turn_finish = False
                             # 조금 갔다가 우회전 하는 것 구현
                             # elif (self.right_distance != -1 and self.right_distance < 300):
@@ -502,7 +502,7 @@ class SelfDrivingNode(Node):
                         self.pid.clear()
                         self.get_logger().info("\033[1;31mstate: **turn**\033[0m")
                         led_msg = RGBStates()
-                        if time.time() - self.led_time > 0.5:
+                        if time.time() - self.led_time > 0.25:
                             if self.led2_color == self.led_colors['yellow']:
                                 self.led2_color = (0, 0, 0)
                             else:
@@ -556,12 +556,16 @@ class SelfDrivingNode(Node):
                             twist.linear.y = 0.0
                             twist.angular.z = 0.0
                             self.is_start = False
+                            self.green_led.blink(0.25)
+                            self.red_led.blink(0.25)
+                            self.left_yellow_led.blink(0.25)
+                            self.right_yellow_led.blink(0.25)
 
                     self.get_logger().info(f"\033[1;32mx: {twist.linear.x}, y: {twist.linear.y}, z: {twist.angular.z}\033[0m")
                     self.mecanum_pub.publish(twist)
                     self.publisher_.publish(led_msg)
                 else:
-                    if time.time() - self.led_time > 0.5:
+                    if time.time() - self.led_time > 0.25:
                         led_msg = RGBStates()
                         if self.led1_color == self.led_colors['white']:
                             self.led1_color = (0, 0, 0)
@@ -576,10 +580,6 @@ class SelfDrivingNode(Node):
                         self.led_time = time.time()
                     self.mecanum_pub.publish(Twist())
                     self.publisher_.publish(led_msg)
-                    self.green_led.blink(0.5)
-                    self.red_led.blink(0.5)
-                    self.left_yellow_led.blink(0.5)
-                    self.right_yellow_led.blink(0.5)
 
             else:
                 time.sleep(0.01)
