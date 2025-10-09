@@ -42,7 +42,7 @@ class LaneDetector(object):
         self.crosswalk_roi_x_end = int(self.img_width * 0.90)
 
         # 3. 횡단보도 판단 기준: ROI 면적 대비 흰색 픽셀의 '비율'
-        self.stop_line_ratio_threshold = 0.20
+        self.stop_line_ratio_threshold = 0.18
 
         # 횡단보도 ROI의 전체 면적을 미리 계산
         roi_width = self.crosswalk_roi_x_end - self.crosswalk_roi_x_start

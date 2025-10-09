@@ -72,7 +72,7 @@ class SelfDrivingNode(Node):
 
         self._yolo_is_on = False
         self._yolo_last_toggle = 0.0
-        self._yolo_min_interval = 0.0   # 연속 토글 최소 간격(초) - 파이프라인 흔들림 방지
+        self._yolo_min_interval = 0.2   # 연속 토글 최소 간격(초) - 파이프라인 흔들림 방지
         self._yolo_timer = None         # enable-for 타이머 핸들
 
         # self.odom_pose = None
@@ -197,6 +197,7 @@ class SelfDrivingNode(Node):
 
         self.turn_right_count = 0       # 이것도 벽 마주친 횟수 세기 위한 용도.
         self.stop_flag = True           # 벽 마주치고 우회전 했을 때만 다시 횡단보도 인식하게 만들기 위함.
+        self.additional_flag = 10     # 우회전한 다음에 직진했을 때만 다시 인식하게끔 추가 플래그.
 
     def get_node_state(self, request, response):
         response.success = True
@@ -284,7 +285,7 @@ class SelfDrivingNode(Node):
         if lane_x == -1:
             # lane_x가 -1이면 '차선 탐색' 동작을 수행하고 즉시 함수를 종료합니다.
             twist.linear.x = self.normal_speed
-            twist.angular.z = 0.7
+            twist.angular.z = 0.5
             self.mecanum_pub.publish(twist)
             self.get_logger().info("Searching for lane (called from invalid state)")
             return
@@ -352,6 +353,7 @@ class SelfDrivingNode(Node):
         if 'green' in classes:
             self.get_logger().info("GREEEEEEN!!!")
             self.yolo_stop(delay_s=0.0)
+            self.objects_info = []
             self.signal_waiting = False
             self.red_hold = False
             self.last_depart_time = time.time()
@@ -361,6 +363,7 @@ class SelfDrivingNode(Node):
         if 'right' in classes and not self.red_hold:
             self._do_right_turn()
             self.yolo_stop(delay_s=0.0)
+            self.objects_info = []
             self.signal_waiting = False
             self.last_depart_time = time.time()
 
@@ -409,6 +412,7 @@ class SelfDrivingNode(Node):
             # 최대 대기 시간 = 타임아웃
             if self.max_red_wait and now > (self.signal_deadline + self.max_red_wait):
                 self.yolo_stop(delay_s=0.0)
+                self.objects_info = []
                 self.signal_waiting = False
                 self.red_hold = False
                 self.last_depart_time = time.time()
@@ -420,6 +424,7 @@ class SelfDrivingNode(Node):
         if now > self.signal_deadline:
             self.get_logger().info("YOLO couldn't detect anything........")
             self.yolo_stop(delay_s=0.0)
+            self.objects_info = []
             self.signal_waiting = False
             self.last_depart_time = time.time()
             return False
@@ -536,7 +541,8 @@ class SelfDrivingNode(Node):
                     if 'green' in classes:
                         self.get_logger().info("Initial GREEN signal detected! Starting driving.")
                         # 출발 후에는 신호 감지가 필요 없으므로 1초 뒤에 YOLO를 끕니다.
-                        self.yolo_stop(delay_s=0.0) 
+                        self.yolo_stop(delay_s=0.0)
+                        self.objects_info = []
                         break # 무한 반복을 탈출하고 본격적인 주행 시작
 
                     if 'red' in classes:
@@ -548,12 +554,12 @@ class SelfDrivingNode(Node):
                 continue
 
             # 욜로 감지된 지 오래됐으면 기존의 욜로 객체 전부 초기화
-            yolo_now = time.time()
-            if yolo_now - self.last_objects_ts > self.objects_timeout:
-                self.objects_info = []
-                self.traffic_signs_status = None
-                self.park_x = -1
-                self.turn_right = False 
+            # yolo_now = time.time()
+            # if yolo_now - self.last_objects_ts > self.objects_timeout:
+            #     self.objects_info = []
+            #     self.traffic_signs_status = None
+            #     self.park_x = -1
+            #     self.turn_right = False 
 
             result_image = image.copy()
             if self.start:
@@ -642,6 +648,7 @@ class SelfDrivingNode(Node):
                 else:
                     # pid 차선 유지 로직이 이 안에 들어감.
                     # 즉, 회피 기동 중일 때는 차선 유지 로직이 아예 실행조차 안 됨.                              
+                    self.additional_flag += 1
 
                 # line following processing
                     status, lane_x = self.lane_detect(mask_white, mask_yellow)
@@ -668,8 +675,9 @@ class SelfDrivingNode(Node):
                             continue
 
                         # 3) 횡단보도 처음 마주치면 정지 후 객체 인식 (벽 앞에서 우회전했을 때만 다시)
-                        if self.stop_flag:
+                        if self.stop_flag and self.additional_flag > 2:
                             self.stop_flag = False
+                            self.additional_flag = 0
                             self.mecanum_pub.publish(Twist())
                             self._enter_signal_wait()
                             continue
@@ -677,7 +685,7 @@ class SelfDrivingNode(Node):
                     # 아무것도 안 보이면 천천히 왼쪽으로 돌면서 차선 찾기
                     elif status is None:
                         twist.linear.x = self.normal_speed
-                        twist.angular.z = 0.7
+                        twist.angular.z = 0.5
                         self.mecanum_pub.publish(twist)
                         self.get_logger().info("there isn't lane_x")
                     
