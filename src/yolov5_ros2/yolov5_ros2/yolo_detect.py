@@ -18,6 +18,9 @@ import yaml
 import time
 #from sdk import common
 
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from message_filters import Subscriber, ApproximateTimeSynchronizer
+
 from yolov5_ros2.cv_tool import px2xy
 import os
 from interfaces.msg import ObjectInfo, ObjectsInfo
@@ -217,8 +220,15 @@ class YoloV5Ros2(Node):
         # Subscriber
         # image_topic = self.get_parameter('image_topic').value
         # self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
-        rgb_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image')
-        depth_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw')
+    
+        # QoS 프로필 정의
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,  # 카메라 센서에는 주로 BEST_EFFORT
+            history=HistoryPolicy.KEEP_LAST,
+            depth=6
+        )
+        rgb_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image', qos_profile=qos_profile)
+        depth_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw', qos_profile=qos_profile)
         ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=1, slop=0.05)
         ts.registerCallback(self.image_callback)
 

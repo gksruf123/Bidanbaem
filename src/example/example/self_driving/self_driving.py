@@ -164,6 +164,7 @@ class SelfDrivingNode(Node):
         self.led_time = time.time()
 
     def button_callback(self, msg):
+        self.is_start = False
         self.button_pressed = True
         self.get_logger().info(f"[Button] pressed")
 
