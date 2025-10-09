@@ -72,11 +72,11 @@ class SelfDrivingNode(Node):
 
         self._yolo_is_on = False
         self._yolo_last_toggle = 0.0
-        self._yolo_min_interval = 0.1   # 연속 토글 최소 간격(초) - 파이프라인 흔들림 방지
+        self._yolo_min_interval = 0.0   # 연속 토글 최소 간격(초) - 파이프라인 흔들림 방지
         self._yolo_timer = None         # enable-for 타이머 핸들
 
-        self.odom_pose = None
-        self.odom_sub = self.create_subscription(Odometry, '/odom', self._odom_cb, 10)
+        # self.odom_pose = None
+        # self.odom_sub = self.create_subscription(Odometry, '/odom', self._odom_cb, 10)
 
     def yolo_start(self, delay_s: float = 0.0):
         """YOLO 추론 시작(서비스 호출) - 구독/카메라 연결은 유지됨."""
@@ -114,28 +114,27 @@ class SelfDrivingNode(Node):
         else:
             _do_stop()
 
-    def yolo_enable_for(self, seconds: float, start_delay: float = 0.0):
-        """YOLO를 잠깐 켰다가(seconds 후 자동으로 끄기)."""
-        # 이전 예약 끄기 취소
-        if self._yolo_timer is not None:
-            try:
-                self._yolo_timer.cancel()
-            except Exception:
-                pass
-            self._yolo_timer = None
+    # def yolo_enable_for(self, seconds: float, start_delay: float = 0.0):
+    #     """YOLO를 잠깐 켰다가(seconds 후 자동으로 끄기)."""
+    #     # 이전 예약 끄기 취소
+    #     if self._yolo_timer is not None:
+    #         try:
+    #             self._yolo_timer.cancel()
+    #         except Exception:
+    #             pass
+    #         self._yolo_timer = None
 
-        # 시작(필요시 지연)
-        self.yolo_start(delay_s=start_delay)
+    #     # 시작(필요시 지연)
+    #     self.yolo_start(delay_s=start_delay)
 
-        # seconds 후 자동 STOP
-        def _auto_stop():
-            self.yolo_stop()
-            self._yolo_timer = None
-        t = threading.Timer(seconds + start_delay, _auto_stop)
-        t.daemon = True
-        t.start()
-        self._yolo_timer = t
-
+    #     # seconds 후 자동 STOP
+    #     def _auto_stop():
+    #         self.yolo_stop()
+    #         self._yolo_timer = None
+    #     t = threading.Timer(seconds + start_delay, _auto_stop)
+    #     t.daemon = True
+    #     t.start()
+    #     self._yolo_timer = t
 
     def init_process(self):
         self.timer.cancel()
@@ -352,7 +351,7 @@ class SelfDrivingNode(Node):
         # 2) 초록불일 경우 즉시 출발
         if 'green' in classes:
             self.get_logger().info("GREEEEEEN!!!")
-            self.yolo_stop(delay_s=0.1)
+            self.yolo_stop(delay_s=0.0)
             self.signal_waiting = False
             self.red_hold = False
             self.last_depart_time = time.time()
@@ -361,7 +360,7 @@ class SelfDrivingNode(Node):
         # 3) 우회전 표지 (빨간불 없을 때만 유효)
         if 'right' in classes and not self.red_hold:
             self._do_right_turn()
-            self.yolo_stop(delay_s=0.1)
+            self.yolo_stop(delay_s=0.0)
             self.signal_waiting = False
             self.last_depart_time = time.time()
 
@@ -409,7 +408,7 @@ class SelfDrivingNode(Node):
             self.get_logger().info("WAIT.....")
             # 최대 대기 시간 = 타임아웃
             if self.max_red_wait and now > (self.signal_deadline + self.max_red_wait):
-                self.yolo_stop(delay_s=0.1)
+                self.yolo_stop(delay_s=0.0)
                 self.signal_waiting = False
                 self.red_hold = False
                 self.last_depart_time = time.time()
@@ -420,7 +419,7 @@ class SelfDrivingNode(Node):
         # 5) 아무 것도 안 보일 경우 최소 대기 시간만큼만 기다렸다가 출발
         if now > self.signal_deadline:
             self.get_logger().info("YOLO couldn't detect anything........")
-            self.yolo_stop(delay_s=0.1)
+            self.yolo_stop(delay_s=0.0)
             self.signal_waiting = False
             self.last_depart_time = time.time()
             return False
@@ -429,87 +428,87 @@ class SelfDrivingNode(Node):
         self.mecanum_pub.publish(Twist())
         return True
 
-    def _odom_cb(self, msg: Odometry):
-        p = msg.pose.pose.position
-        q = msg.pose.pose.orientation
+    # def _odom_cb(self, msg: Odometry):
+    #     p = msg.pose.pose.position
+    #     q = msg.pose.pose.orientation
 
-        yaw = quat_to_yaw(q.x, q.y, q.z, q.w)
-        self.odom_pose = (p.x, p.y, yaw)
+    #     yaw = quat_to_yaw(q.x, q.y, q.z, q.w)
+    #     self.odom_pose = (p.x, p.y, yaw)
 
-    def _get_pose(self):
-        return self.odom_pose
+    # def _get_pose(self):
+    #     return self.odom_pose
     
-    def _move_relative_odom(self,
-                            dx: float, dy: float,
-                            vx_max: float = 0.20,
-                            vy_max: float = 0.18,
-                            k_pos: float = 0.8,
-                            stop_tolerance: float = 0.03,
-                            timeout_s: float = 8.0):
-        """
-        오돔 기반으로 base_link 축 기준 (dx, dy)만큼 이동.
-        x+: 전진, y+: 좌측(셋업에 따라 다름). 우측이면 보통 dy<0.
-        """
-        # 시작 포즈 확보 (최대 2초 대기)
-        start_t = time.time()
-        start_pose = None
-        while self.is_running and (start_pose is None) and (time.time() - start_t < 2.0):
-            start_pose = self._get_pose()
-            time.sleep(0.01)
-        if start_pose is None:
-            self.get_logger().warn("No /odom received within 2.0s. Skip relative move.")
-            self.mecanum_pub.publish(Twist())
-            return
+    # def _move_relative_odom(self,
+    #                         dx: float, dy: float,
+    #                         vx_max: float = 0.20,
+    #                         vy_max: float = 0.18,
+    #                         k_pos: float = 0.8,
+    #                         stop_tolerance: float = 0.03,
+    #                         timeout_s: float = 8.0):
+    #     """
+    #     오돔 기반으로 base_link 축 기준 (dx, dy)만큼 이동.
+    #     x+: 전진, y+: 좌측(셋업에 따라 다름). 우측이면 보통 dy<0.
+    #     """
+    #     # 시작 포즈 확보 (최대 2초 대기)
+    #     start_t = time.time()
+    #     start_pose = None
+    #     while self.is_running and (start_pose is None) and (time.time() - start_t < 2.0):
+    #         start_pose = self._get_pose()
+    #         time.sleep(0.01)
+    #     if start_pose is None:
+    #         self.get_logger().warn("No /odom received within 2.0s. Skip relative move.")
+    #         self.mecanum_pub.publish(Twist())
+    #         return
         
-        x0, y0, _ = start_pose
-        twist = Twist()
-        last_pub = 0.0
-        dt_cmd = 0.02
+    #     x0, y0, _ = start_pose
+    #     twist = Twist()
+    #     last_pub = 0.0
+    #     dt_cmd = 0.02
 
-        def body_error():
-            pose = self._get_pose()
-            if pose is None:
-                return None, None, None
-            x, y, yaw = pose
-            dx_w = x - x0
-            dy_w = y - y0
-            c = math.cos(-yaw); s = math.sin(-yaw)
-            bx = c*dx_w - s*dy_w
-            by = s*dx_w + c*dy_w
-            return dx - bx, dy - by, yaw
+    #     def body_error():
+    #         pose = self._get_pose()
+    #         if pose is None:
+    #             return None, None, None
+    #         x, y, yaw = pose
+    #         dx_w = x - x0
+    #         dy_w = y - y0
+    #         c = math.cos(-yaw); s = math.sin(-yaw)
+    #         bx = c*dx_w - s*dy_w
+    #         by = s*dx_w + c*dy_w
+    #         return dx - bx, dy - by, yaw
         
-        while self.is_running and (time.time() - start_t < timeout_s):
-            out = body_error()
-            if out[0] is None:
-                time.sleep(0.01); continue
-            ex, ey, yaw_now = out
+    #     while self.is_running and (time.time() - start_t < timeout_s):
+    #         out = body_error()
+    #         if out[0] is None:
+    #             time.sleep(0.01); continue
+    #         ex, ey, yaw_now = out
 
-            if math.hypot(ex, ey) <= stop_tolerance:
-                break
+    #         if math.hypot(ex, ey) <= stop_tolerance:
+    #             break
 
-            vx = max(-vx_max, min(vx_max, k_pos * ex))
-            vy = max(-vy_max, min(vy_max, k_pos * ey))
+    #         vx = max(-vx_max, min(vx_max, k_pos * ex))
+    #         vy = max(-vy_max, min(vy_max, k_pos * ey))
 
-            # yaw 오차는 -pi~pi로 정규화 후 보정
-            raw = yaw_now - start_pose[2]
-            yaw_error = math.atan2(math.sin(raw), math.cos(raw))
+    #         # yaw 오차는 -pi~pi로 정규화 후 보정
+    #         raw = yaw_now - start_pose[2]
+    #         yaw_error = math.atan2(math.sin(raw), math.cos(raw))
 
-            twist.angular.z = -0.8 * yaw_error # k_yaw=0.8 정도로 시작
+    #         twist.angular.z = -0.8 * yaw_error # k_yaw=0.8 정도로 시작
 
-            # 너무 작은 명령은 0 (스틱션 극복)
-            if abs(vx) < 0.05: vx = 0.0
-            if abs(vy) < 0.05: vy = 0.0
+    #         # 너무 작은 명령은 0 (스틱션 극복)
+    #         if abs(vx) < 0.05: vx = 0.0
+    #         if abs(vy) < 0.05: vy = 0.0
 
-            twist.linear.x = vx
-            twist.linear.y = vy     # y+가 좌측인 셋업이 많음
+    #         twist.linear.x = vx
+    #         twist.linear.y = vy     # y+가 좌측인 셋업이 많음
 
-            now = time.time()
-            if now - last_pub >= dt_cmd:
-                self.mecanum_pub.publish(twist)
-                last_pub = now
-            time.sleep(0.004)
+    #         now = time.time()
+    #         if now - last_pub >= dt_cmd:
+    #             self.mecanum_pub.publish(twist)
+    #             last_pub = now
+    #         time.sleep(0.004)
 
-        self.mecanum_pub.publish(Twist())
+    #     self.mecanum_pub.publish(Twist())
 
     def main(self):
         start_flag = True
@@ -537,7 +536,7 @@ class SelfDrivingNode(Node):
                     if 'green' in classes:
                         self.get_logger().info("Initial GREEN signal detected! Starting driving.")
                         # 출발 후에는 신호 감지가 필요 없으므로 1초 뒤에 YOLO를 끕니다.
-                        self.yolo_stop(delay_s=0.1) 
+                        self.yolo_stop(delay_s=0.0) 
                         break # 무한 반복을 탈출하고 본격적인 주행 시작
 
                     if 'red' in classes:
@@ -584,7 +583,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.35, 0.52
+                        NEAR, FAR = 0.35, 0.50
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
@@ -654,7 +653,6 @@ class SelfDrivingNode(Node):
 
                     elif status == "STOP_LINE":
                         now = time.time()
-                        self.get_logger().info("STOP_LINE")
 
                         # 2) 횡단보도 한번 인식한 후로 일정 시간 동안은 횡단보도 무시.
                         if now - self.last_depart_time < self.stop_cooldown:
@@ -690,15 +688,15 @@ class SelfDrivingNode(Node):
                 time.sleep(0.01)
 
             
-            bgr_image = result_image
-            if self.display:
-                self.fps.update()
-                bgr_image = self.fps.show_fps(bgr_image)
+            # bgr_image = result_image
+            # if self.display:
+            #     self.fps.update()
+            #     bgr_image = self.fps.show_fps(bgr_image)
 
-            self.result_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
+            # self.result_publisher.publish(self.bridge.cv2_to_imgmsg(bgr_image, "bgr8"))
 
-            self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(visual_image, "bgr8"))
-            # 이건 나중에 삭제하기. rqt로 이진화 차선 확인하려고 만든 거니까.
+            # self.binary_publisher.publish(self.bridge.cv2_to_imgmsg(visual_image, "bgr8"))
+            # # 이건 나중에 삭제하기. rqt로 이진화 차선 확인하려고 만든 거니까.
 
            
             target_period = 1.0 / 20.0   # 20fps → 0.05초
