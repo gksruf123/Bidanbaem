@@ -149,10 +149,13 @@ class SelfDrivingNode(Node):
 
         self.led1_current_color_index = 'red'
         self.led2_current_color_index = 'red'
+        self.led1_color = (0, 0, 0)
+        self.led2_color = (0, 0, 0)
         self.led_colors = {
             'red': (255, 0, 0),
             'green': (0, 255, 0),
             'yellow': (255, 255, 0),
+            'white': (255, 255, 255)
         }
         self.button_pressed = False
         self.led_time = time.time()
@@ -324,6 +327,7 @@ class SelfDrivingNode(Node):
                     continue
 
             result_image = image.copy()
+            # self.get_logger().info(f"running: {self.running}")
             if self.running:
                 h, w = image.shape[:2]
 
@@ -332,6 +336,7 @@ class SelfDrivingNode(Node):
 
                 twist = Twist()
 
+                # self.get_logger().info(f"is_start: {self.is_start}, button_pressed: {self.button_pressed}")
                 if self.is_start and self.button_pressed: # 맨 처음 'green' 감지
                     # line following processing
                     result_image, left_lane_x, _ = self.lane_detect(binary_image, image.copy())  # the coordinate of the line while the robot is in the middle of the lane
@@ -344,11 +349,11 @@ class SelfDrivingNode(Node):
                                     self.wait = False
                                     self.start = True
                                     led_msg = RGBStates()
-                                    led1_color = self.led_colors['green']
-                                    led2_color = self.led_colors['green']
+                                    self.led1_color = self.led_colors['green']
+                                    self.led2_color = self.led_colors['green']
                                     led_msg.states = [
-                                        RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
-                                        RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                                        RGBState(index=1, red=self.led1_color[0], green=self.led1_color[1], blue=self.led1_color[2]),
+                                        RGBState(index=2, red=self.led2_color[0], green=self.led2_color[1], blue=self.led2_color[2])
                                     ]
                                     self.get_logger().info(f"\033[1;32mwait is done call_stop\033[0m")
                                     self.call_stop()
@@ -358,11 +363,11 @@ class SelfDrivingNode(Node):
                             if self.detected_park:
                                 self.stop = True
                                 led_msg = RGBStates()
-                                led1_color = (0, 0, 0)
-                                led2_color = (0, 0, 0)
+                                self.led1_color = (0, 0, 0)
+                                self.led2_color = (0, 0, 0)
                                 led_msg.states = [
-                                    RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
-                                    RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                                    RGBState(index=1, red=self.led1_color[0], green=self.led1_color[1], blue=self.led1_color[2]),
+                                    RGBState(index=2, red=self.led2_color[0], green=self.led2_color[1], blue=self.led2_color[2])
                                 ]
                                 self.stop_time = time.time()
                                 self.start = False
@@ -377,11 +382,11 @@ class SelfDrivingNode(Node):
                                 self.stop_time = time.time()
                                 self.wait = True
                                 led_msg = RGBStates()
-                                led1_color = self.led_colors['red']
-                                led2_color = self.led_colors['red']
+                                self.led1_color = self.led_colors['red']
+                                self.led2_color = self.led_colors['red']
                                 led_msg.states = [
-                                    RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
-                                    RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                                    RGBState(index=1, red=self.led1_color[0], green=self.led1_color[1], blue=self.led1_color[2]),
+                                    RGBState(index=2, red=self.led2_color[0], green=self.led2_color[1], blue=self.led2_color[2])
                                 ]
                                 self.get_logger().info(f"\033[1;32mstart is done call_start\033[0m")
                                 self.call_start()
@@ -391,11 +396,11 @@ class SelfDrivingNode(Node):
                             self.turn_count = 0
                             self.wait = True
                             led_msg = RGBStates()
-                            led1_color = self.led_colors['red']
-                            led2_color = self.led_colors['red']
+                            self.led1_color = self.led_colors['red']
+                            self.led2_color = self.led_colors['red']
                             led_msg.states = [
-                                RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
-                                RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                                RGBState(index=1, red=self.led1_color[0], green=self.led1_color[1], blue=self.led1_color[2]),
+                                RGBState(index=2, red=self.led2_color[0], green=self.led2_color[1], blue=self.led2_color[2])
                             ]
                             self.get_logger().info(f"\033[1;32mturn is done call_start\033[0m")
                             self.call_start()
@@ -411,6 +416,7 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(twist)
                         else:
                             self.mecanum_pub.publish(Twist())
+                        self.publisher_.publish(led_msg)
                         continue
 
                     if self.start: # odom을 추가하여
@@ -477,14 +483,14 @@ class SelfDrivingNode(Node):
                         self.get_logger().info("\033[1;31mstate: **turn**\033[0m")
                         led_msg = RGBStates()
                         if time.time() - self.led_time > 0.5:
-                            if led1_color == self.led_colors['yellow']:
-                                led1_color == (0, 0, 0)
+                            if self.led2_color == self.led_colors['yellow']:
+                                self.led2_color = (0, 0, 0)
                             else:
-                                led1_color = self.led_colors['yellow']
-                            led2_color = (0, 0, 0)
+                                self.led2_color = self.led_colors['yellow']
+                            self.led1_color = (0, 0, 0)
                             led_msg.states = [
-                                RGBState(index=1, red=led1_color[0], green=led1_color[1], blue=led1_color[2]),
-                                RGBState(index=2, red=led2_color[0], green=led2_color[1], blue=led2_color[2])
+                                RGBState(index=1, red=self.led1_color[0], green=self.led1_color[1], blue=self.led1_color[2]),
+                                RGBState(index=2, red=self.led2_color[0], green=self.led2_color[1], blue=self.led2_color[2])
                             ]
                             self.led_time = time.time()
                         twist.linear.x = 0.0
@@ -533,8 +539,23 @@ class SelfDrivingNode(Node):
 
                     self.get_logger().info(f"\033[1;32mx: {twist.linear.x}, y: {twist.linear.y}, z: {twist.angular.z}\033[0m")
                     self.mecanum_pub.publish(twist)
+                    self.publisher_.publish(led_msg)
                 else:
+                    if time.time() - self.led_time > 0.5:
+                        led_msg = RGBStates()
+                        if self.led1_color == self.led_colors['white']:
+                            self.led1_color = (0, 0, 0)
+                            self.led2_color = (0, 0, 0)
+                        else:
+                            self.led1_color = self.led_colors['white']
+                            self.led2_color = self.led_colors['white']
+                        led_msg.states = [
+                            RGBState(index=1, red=self.led1_color[0], green=self.led1_color[1], blue=self.led1_color[2]),
+                            RGBState(index=2, red=self.led2_color[0], green=self.led2_color[1], blue=self.led2_color[2])
+                        ]
+                        self.led_time = time.time()
                     self.mecanum_pub.publish(Twist())
+                    self.publisher_.publish(led_msg)
 
             else:
                 time.sleep(0.01)
