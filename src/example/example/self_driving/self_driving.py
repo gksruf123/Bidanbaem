@@ -167,7 +167,7 @@ class SelfDrivingNode(Node):
         # 🔽 신호등 출발 대기 (첫 번째)
         self.await_green_start = True   # 처음엔 green 신호 대기
         self.green_stable_frames = 0
-        self.GREEN_REQUIRED = 5
+        self.GREEN_REQUIRED = 2
 
         # 🔽 두 번째 신호등 이후 제어용
         self.traffic_light_count = 0      # 신호등 감지 횟수
