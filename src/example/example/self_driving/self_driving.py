@@ -188,7 +188,7 @@ class SelfDrivingNode(Node):
         self.stop_cooldown = 2.0    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
 
         self.last_objects_ts = time.time()
-        self.objects_timeout = 0.01  # 초
+        self.objects_timeout = 0.7  # 초
 
         self.signal_waiting = False     # 정지선 신호 대기 모드
         self.signal_window = 3.0        # 정지선에서 yolo 켜고 기다릴 시간
