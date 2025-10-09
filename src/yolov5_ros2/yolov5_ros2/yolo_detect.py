@@ -200,7 +200,7 @@ class YoloV5Ros2(Node):
 
         # 클래스 이름 자동 로드(있으면 사용, 없으면 cls_#)
         class_names = _load_class_names(package_share_directory, model_base)
-        self.frame_cnt = 0
+        self.frame_timer = time.time()
 
         # 기존 self.yolov5 를 ONNX 호환 래퍼로 대체 (predict/ names 시그니처 동일)
         self.yolov5 = OrtYoloCompat(
@@ -230,7 +230,7 @@ class YoloV5Ros2(Node):
         )
         rgb_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image', qos_profile=qos_profile)
         depth_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw', qos_profile=qos_profile)
-        ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=1, slop=0.05)
+        ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=2, slop=0.3)
         ts.registerCallback(self.image_callback)
 
         # Bridge & flags
@@ -251,7 +251,8 @@ class YoloV5Ros2(Node):
             self.start = True
             response.success = True
             response.message = "start"
-            self.frame_cnt = 0
+            self.frame_timer = time.time()
+            self.cnt = 0
         # else:
             # response.success = False
             # response.message = "fail"
@@ -273,8 +274,9 @@ class YoloV5Ros2(Node):
         if not self.start:
             return
         
-        if self.frame_cnt < 6:
-            self.frame_cnt += 1
+        if time.time() - self.frame_timer < 0.75:
+            self.get_logger().info(f"~~~~~~~~~count: {self.cnt}~~~~~~~~~~")
+            self.cnt += 1
             return
 
         image = self.bridge.imgmsg_to_cv2(rgb_msg, "rgb8")
