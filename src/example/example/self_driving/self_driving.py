@@ -418,8 +418,6 @@ class SelfDrivingNode(Node):
                                     RGBState(index=1, red=self.led1_color[0], green=self.led1_color[1], blue=self.led1_color[2]),
                                     RGBState(index=2, red=self.led2_color[0], green=self.led2_color[1], blue=self.led2_color[2])
                                 ]
-                                self.get_logger().info(f"\033[1;32mstart is done call_start\033[0m")
-                                self.call_start()
                                 self.start = False
                         elif self.turn:
                             self.turn_right = False
@@ -436,8 +434,6 @@ class SelfDrivingNode(Node):
                                 RGBState(index=1, red=self.led1_color[0], green=self.led1_color[1], blue=self.led1_color[2]),
                                 RGBState(index=2, red=self.led2_color[0], green=self.led2_color[1], blue=self.led2_color[2])
                             ]
-                            self.get_logger().info(f"\033[1;32mturn is done call_start\033[0m")
-                            self.call_start()
                             self.turn = False
                         elif self.stop:
                             self.stop = False
@@ -451,6 +447,8 @@ class SelfDrivingNode(Node):
                         else:
                             self.mecanum_pub.publish(Twist())
                         self.publisher_.publish(led_msg)
+                        self.get_logger().info(f"\033[1;32mturn is done call_start\033[0m")
+                        self.call_start()
                         continue
 
                     if self.start: # odom을 추가하여
