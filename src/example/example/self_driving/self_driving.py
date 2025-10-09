@@ -169,7 +169,7 @@ class SelfDrivingNode(Node):
         self.turn_right = False  # right turning sign
 
         self.normal_speed = 0.7  # normal driving speed
-        self.slow_down_speed = 0.1  # slowing down speed
+        self.slow_down_speed = 0.0  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
 
@@ -181,7 +181,7 @@ class SelfDrivingNode(Node):
         self.depth_image = None
         self.avoid_until = 0.0
         self.dmin_ema = None        # d_min 평활화용
-        self.min_wall_speed = 0.1
+        self.min_wall_speed = 0.0
         self.last_avoid_s = 0.0
 
         self.last_depart_time = -1e9     # 횡단보도 마지막에 멈췄던 시간 체크용. 첫 실행 때 횡단보도 무시를 방지하기 위해 초기값을 과거로 설정.
