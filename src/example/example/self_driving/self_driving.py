@@ -57,6 +57,7 @@ class SelfDrivingNode(Node):
         self.servo_state_pub = self.create_publisher(SetPWMServoState, 'ros_robot_controller/pwm_servo/set_state', 1)
         self.result_publisher = self.create_publisher(Image, '~/image_result', 1)
         self.odom_subscriber = self.create_subscription(Odometry, 'odom', self.odom_callback, 10)
+        self.odom_subscriber = self.create_subscription(Image, '/ascamera/camera_publisher/depth0/image_raw', self.depth_callback, 1)
 
         self.create_subscription(ButtonState, '/ros_robot_controller/button', self.button_callback, 10)
         self.get_logger().info('ButtonPressReceiver node started')
@@ -151,6 +152,7 @@ class SelfDrivingNode(Node):
         self.object_callback_cnt = 0
 
         self.start_turn_time_stamp = 0
+        self.depth = None
         
         self.led1_color = (0, 0, 0)
         self.led2_color = (0, 0, 0)
@@ -162,6 +164,13 @@ class SelfDrivingNode(Node):
         }
         self.button_pressed = False
         self.led_time = time.time()
+
+    def depth_callback(self, depth_msg):
+        depth = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')
+        # 깊이 값 보정 (0 → 주변값으로 보간)
+        depth_uint16 = depth.astype(np.uint16)  # inpaint는 8/16bit만 지원
+        mask = (depth_uint16 == 0).astype('uint8')    # 0인 부분을 마스크로 지정
+        self.depth = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
 
     def button_callback(self, msg):
         self.is_start = False
@@ -639,8 +648,8 @@ class SelfDrivingNode(Node):
                     for i in self.objects_info:
                         class_name = i.class_name
                         center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
-                        obj_distance = i.distance
-                        self.fence_distance = i.fence_distance
+                        obj_distance = self.depth[center[1], center[0]]
+                        self.fence_distance = self.depth[10, 320]
                         class_set.add(class_name)
                         
                         if class_name == 'crosswalk':

@@ -219,19 +219,20 @@ class YoloV5Ros2(Node):
         self.result_img_pub = self.create_publisher(Image, "result_img", 10)
 
         # Subscriber
-        # image_topic = self.get_parameter('image_topic').value
-        # self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
+        image_topic = self.get_parameter('image_topic').value
+        self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
     
-        # QoS 프로필 정의
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,  # 카메라 센서에는 주로 BEST_EFFORT
-            history=HistoryPolicy.KEEP_LAST,
-            depth=6
-        )
-        rgb_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image', qos_profile=qos_profile)
-        depth_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw', qos_profile=qos_profile)
-        ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=2, slop=0.3)
-        ts.registerCallback(self.image_callback)
+        # # QoS 프로필 정의
+        # qos_profile = QoSProfile(
+        #     reliability=ReliabilityPolicy.BEST_EFFORT,  # 카메라 센서에는 주로 BEST_EFFORT
+        #     history=HistoryPolicy.KEEP_LAST,
+        #     depth=6
+        # )
+        # self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
+        # rgb_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/rgb0/image', qos_profile=qos_profile)
+        # depth_sub = message_filters.Subscriber(self, Image, '/ascamera/camera_publisher/depth0/image_raw', qos_profile=qos_profile)
+        # ts = message_filters.ApproximateTimeSynchronizer([rgb_sub, depth_sub], queue_size=2, slop=0.3)
+        # ts.registerCallback(self.image_callback)
 
         # Bridge & flags
         self.bridge = CvBridge()
@@ -270,23 +271,23 @@ class YoloV5Ros2(Node):
             response.message = "fail"
         return response
 
-    def image_callback(self, rgb_msg, depth_msg):
+    def image_callback(self, rgb_msg):
         if not self.start:
             return
         
-        if time.time() - self.frame_timer < 0.75:
-            self.get_logger().info(f"~~~~~~~~~count: {self.cnt}~~~~~~~~~~")
-            self.cnt += 1
-            return
+        # if time.time() - self.frame_timer < 0.75:
+        #     self.get_logger().info(f"~~~~~~~~~count: {self.cnt}~~~~~~~~~~")
+        #     self.cnt += 1
+        #     return
 
         image = self.bridge.imgmsg_to_cv2(rgb_msg, "rgb8")
-        depth = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')
+        # depth = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')
         detect_result = self.yolov5.predict(image)  # 동일 시그니처 유지
 
         # 깊이 값 보정 (0 → 주변값으로 보간)
-        depth_uint16 = depth.astype(np.uint16)  # inpaint는 8/16bit만 지원
-        mask = (depth_uint16 == 0).astype('uint8')    # 0인 부분을 마스크로 지정
-        depth = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
+        # depth_uint16 = depth.astype(np.uint16)  # inpaint는 8/16bit만 지원
+        # mask = (depth_uint16 == 0).astype('uint8')    # 0인 부분을 마스크로 지정
+        # depth = cv2.inpaint(depth_uint16, mask, 2, cv2.INPAINT_TELEA)
 
         # 다시 float로 변환 (필요하다면)
         # depth = depth_inpaint.astype(np.float32)
@@ -313,8 +314,8 @@ class YoloV5Ros2(Node):
             x1 = int(x1); y1 = int(y1); x2 = int(x2); y2 = int(y2)
             cx = (x1 + x2) / 2.0; cy = (y1 + y2) / 2.0
 
-            box_distance = depth[int(cy), int(cx)]
-            fence_distance = depth[10, 320]
+            # box_distance = depth[int(cy), int(cx)]
+            # fence_distance = depth[10, 320]
 
             if ros_distribution == 'galactic':
                 det.bbox.center.x = cx; det.bbox.center.y = cy
@@ -333,7 +334,7 @@ class YoloV5Ros2(Node):
             if self.show_result or self.pub_result_img:
                 cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(image, f"{name}:{hyp.hypothesis.score:.2f}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                cv2.putText(image, f"{box_distance} | {fence_distance}", (x1, y1 + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                # cv2.putText(image, f"{box_distance} | {fence_distance}", (x1, y1 + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
                 cv2.waitKey(1)
 
             oi = ObjectInfo()
@@ -341,8 +342,8 @@ class YoloV5Ros2(Node):
             oi.box = [x1, y1, x2, y2]
             oi.score = round(float(scores[index]), 2)
             oi.width = w; oi.height = h
-            oi.distance = int(box_distance)
-            oi.fence_distance = int(fence_distance)
+            # oi.distance = int(box_distance)
+            # oi.fence_distance = int(fence_distance)
             objects_info.append(oi)
 
         object_msg = ObjectsInfo()
