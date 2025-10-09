@@ -167,7 +167,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.7  # normal driving speed
+        self.normal_speed = 0.6  # normal driving speed
         self.slow_down_speed = 0.0  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -187,7 +187,7 @@ class SelfDrivingNode(Node):
         self.stop_cooldown = 2.0    # 횡단보도 한번 멈추면 그 이후로 안 멈추는 시간
 
         self.last_objects_ts = time.time()
-        self.objects_timeout = 0.7  # 초
+        self.objects_timeout = 0.0  # 초
 
         self.signal_waiting = False     # 정지선 신호 대기 모드
         self.signal_window = 3.0        # 정지선에서 yolo 켜고 기다릴 시간
@@ -306,14 +306,14 @@ class SelfDrivingNode(Node):
         forward_time = 0.4
         t_end_forward = time.time() + forward_time
         while time.time() < t_end_forward and self.is_running:
-            twist.linear.x = 0.7  # 설정된 기본 속도로 직진
+            twist.linear.x = 0.6  # 설정된 기본 속도로 직진
             twist.angular.z = 0.0
             self.mecanum_pub.publish(twist)
             time.sleep(0.02)
 
         # 2. 0.8초 동안 제자리에서 우회전 (원래 코드)
         self.get_logger().info("Turning right for 0.8s.")
-        turn_time = 0.8
+        turn_time = 0.9
         t_end_turn = time.time() + turn_time
         while time.time() < t_end_turn and self.is_running:
             twist.linear.x = 0.0
