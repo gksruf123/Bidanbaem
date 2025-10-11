@@ -110,35 +110,6 @@ class SelfDrivingNode(Node):
         else:
             _do_stop()
 
-    def yolo_stop_and_wait(self, timeout_sec: float = 2.0) -> bool:
-            """
-            YOLO 추론 정지를 동기적으로 요청하고, 서비스 응답이 올 때까지 기다립니다.
-            성공 시 True, 실패 또는 타임아웃 시 False를 반환합니다.
-            """
-            # 1. 이미 꺼져있으면 즉시 성공을 반환합니다.
-            if not self._yolo_is_on:
-                return True
-
-            self.get_logger().info("Requesting YOLO stop and waiting for confirmation...")
-            
-            # 2. YOLO 정지 서비스를 비동기로 호출하고 'future' 객체를 받습니다.
-            future = self.stop_yolov5_client.call_async(Trigger.Request())
-            
-            # 3. 'future'가 완료될 때까지 (즉, 서비스 응답이 올 때까지) 기다립니다.
-            rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
-
-            # 4. 서비스 호출 결과를 확인하고 상태를 업데이트합니다.
-            if future.done() and future.result() is not None and future.result().success:
-                self.get_logger().info("YOLO stop confirmed.")
-                self._yolo_is_on = False
-                self._yolo_last_toggle = time.time()
-                return True
-            else:
-                self.get_logger().warn(f"YOLO stop service call failed or timed out after {timeout_sec} seconds.")
-                # 실패하더라도 일단 내부 상태는 꺼진 것으로 간주하여 제어 흐름을 단순화할 수 있습니다.
-                self._yolo_is_on = False 
-                return False
-
     def init_process(self):
         self.timer.cancel()
 
@@ -170,7 +141,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.8  # normal driving speed
+        self.normal_speed = 0.7  # normal driving speed
         self.slow_down_speed = 0.0  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -356,7 +327,7 @@ class SelfDrivingNode(Node):
         # 2) 초록불일 경우 즉시 출발
         if 'green' in classes:
             self.get_logger().info("GREEEEEEN!!!")
-            self.yolo_stop_and_wait()
+            self.yolo_stop(delay_s=0.0)
             self.objects_info = []
             self.signal_waiting = False
             self.red_hold = False
@@ -365,9 +336,9 @@ class SelfDrivingNode(Node):
         
         # 3) 우회전 표지 (빨간불 없을 때만 유효)
         if 'right' in classes and not self.red_hold:
-            self.yolo_stop_and_wait()
-            self.objects_info = []
             self._do_right_turn()
+            self.yolo_stop(delay_s=0.0)
+            self.objects_info = []
             self.signal_waiting = False
             self.last_depart_time = time.time()
 
@@ -404,7 +375,7 @@ class SelfDrivingNode(Node):
             self.get_logger().info("WAIT.....")
             # 최대 대기 시간 = 타임아웃
             if self.max_red_wait and now > (self.signal_deadline + self.max_red_wait):
-                self.yolo_stop_and_wait()
+                self.yolo_stop(delay_s=0.0)
                 self.objects_info = []
                 self.signal_waiting = False
                 self.red_hold = False
@@ -416,7 +387,7 @@ class SelfDrivingNode(Node):
         # 5) 아무 것도 안 보일 경우 최소 대기 시간만큼만 기다렸다가 출발
         if now > self.signal_deadline:
             self.get_logger().info("YOLO couldn't detect anything........")
-            self.yolo_stop_and_wait()
+            self.yolo_stop(delay_s=0.0)
             self.objects_info = []
             self.signal_waiting = False
             self.last_depart_time = time.time()
@@ -452,7 +423,7 @@ class SelfDrivingNode(Node):
                     if 'green' in classes:
                         self.get_logger().info("Initial GREEN signal detected! Starting driving.")
                         # 출발 후에는 신호 감지가 필요 없으므로 1초 뒤에 YOLO를 끕니다.
-                        self.yolo_stop_and_wait()
+                        self.yolo_stop(delay_s=0.0)
                         self.objects_info = []
                         break # 무한 반복을 탈출하고 본격적인 주행 시작
 
@@ -573,7 +544,9 @@ class SelfDrivingNode(Node):
                         if self.signal_waiting:
                             if self._tick_signal_wait():
                                 continue
-                            # 인식 끝나면 라인팔로우 복귀                        
+                            # 인식 끝나면 라인팔로우 복귀
+                            self.yolo_stop(delay_s=0.0)
+                            self.objects_info = []                            
                             self._drive_straight(lane_x, x_setpoint, twist)
                             continue
 
