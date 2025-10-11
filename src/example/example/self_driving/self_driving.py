@@ -141,7 +141,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.81  # normal driving speed
+        self.normal_speed = 0.55  # normal driving speed
         self.slow_down_speed = 0.0  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -172,8 +172,6 @@ class SelfDrivingNode(Node):
         self.turn_right_count = 0       # 이것도 벽 마주친 횟수 세기 위한 용도.
         self.stop_flag = True           # 벽 마주치고 우회전 했을 때만 다시 횡단보도 인식하게 만들기 위함.
         self.additional_flag = 10     # 우회전한 다음에 직진했을 때만 다시 인식하게끔 추가 플래그.
-
-        self.departure_time = 0.0
 
     def get_node_state(self, request, response):
         response.success = True
@@ -280,7 +278,7 @@ class SelfDrivingNode(Node):
 
         # 1. 0.5초 동안 직진
         self.get_logger().info("Moving straight for 0.5s before turning.")
-        forward_time = 0.55
+        forward_time = 0.5
         t_end_forward = time.time() + forward_time
         while time.time() < t_end_forward and self.is_running:
             twist.linear.x = 0.7  # 설정된 기본 속도로 직진
@@ -313,24 +311,8 @@ class SelfDrivingNode(Node):
     def _tick_signal_wait(self) -> bool:
         """
         신호 대기 중 호출. True면 계속 대기, False면 대기 종료(라인 팔로우 복귀).
-        '출발 예약' 로직 추가.
         """
         now = time.time()
-
-        # 1. 출발이 예약된 상태인지 확인
-        if self.departure_time > 0:
-            if now >= self.departure_time:
-                # 예약된 시간이 되면 진짜로 출발 (대기 종료)
-                self.get_logger().info("Departure time reached. Resuming driving.")
-                self.departure_time = 0.0 # 예약 시간 초기화
-                self.signal_waiting = False
-                self.red_hold = False
-                self.last_depart_time = time.time()
-                return False
-            else:
-                # 아직 예약된 시간이 안 됐으면 계속 대기
-                self.mecanum_pub.publish(Twist())
-                return True
 
         # 최신 한 프레임에서 본 욜로 객체 클래스들의 집합
         classes = {o.class_name for o in self.objects_info} if self.objects_info else set()
@@ -342,15 +324,20 @@ class SelfDrivingNode(Node):
             self.mecanum_pub.publish(Twist())
             return True
 
-        # 2. 출발 조건이 되면 '예약'만 하고 계속 대기 상태 유지
-        should_depart = False
+        # 2) 초록불일 경우 즉시 출발
         if 'green' in classes:
-            self.get_logger().info("GREEEEEEN!!! Preparing for departure.")
-            should_depart = True
-        elif 'right' in classes and not self.red_hold:
-            # 우회전은 즉시 행동해야 하므로 예약 로직 없이 바로 처리
+            self.get_logger().info("GREEEEEEN!!!")
+            self.yolo_stop(delay_s=0.0)
+            self.objects_info = []
+            self.signal_waiting = False
+            self.red_hold = False
+            self.last_depart_time = time.time()
+            return False
+        
+        # 3) 우회전 표지 (빨간불 없을 때만 유효)
+        if 'right' in classes and not self.red_hold:
             self._do_right_turn()
-            self.yolo_stop(delay_s=0.0) # 즉시 정지 요청
+            self.yolo_stop(delay_s=0.0)
             self.objects_info = []
             self.signal_waiting = False
             self.last_depart_time = time.time()
@@ -365,7 +352,7 @@ class SelfDrivingNode(Node):
                 twist.linear.x = 0.7  # 설정된 기본 속도로 직진
                 twist.angular.z = 0.0
                 self.mecanum_pub.publish(twist)
-                time.sleep(0.02)
+                time.sleep(0.02)    
 
             # 2. 주차
             forward_time = 1.0
@@ -375,30 +362,38 @@ class SelfDrivingNode(Node):
                 twist.linear.y = -0.5  # 설정된 기본 속도로 직진
                 twist.angular.z = 0.0
                 self.mecanum_pub.publish(twist)
-                time.sleep(0.02)
-
+                time.sleep(0.02)                    
+            
             # 정지 및 주행 플래그 False로 바꿈으로써 주행 종료
             self.mecanum_pub.publish(Twist())
             self.is_running = False
 
-            return False
-        elif self.red_hold and self.max_red_wait and now > (self.signal_deadline + self.max_red_wait):
-            self.get_logger().info("Red light wait timed out. Preparing for departure.")
-            should_depart = True
-        elif not self.red_hold and now > self.signal_deadline:
-            self.get_logger().info("YOLO couldn't detect anything. Preparing for departure.")
-            should_depart = True
-
-        if should_depart:
-            self.yolo_stop(delay_s=0.0) # 즉시 YOLO 정지 요청
-            self.objects_info = []      # 유령 데이터가 다음 예약 확인에 영향 주지 않도록 즉시 비움
-            delay = 2.7  # 1초의 여유 시간 설정
-            self.departure_time = now + delay
-            self.get_logger().info(f"Departure scheduled in {delay} second(s).")
+            return False        
+        
+        # 4) 빨간불이 보인 적이 있다면: 초록불 나올 때까지 정지 유지
+        if self.red_hold:
+            self.get_logger().info("WAIT.....")
+            # 최대 대기 시간 = 타임아웃
+            if self.max_red_wait and now > (self.signal_deadline + self.max_red_wait):
+                self.yolo_stop(delay_s=0.0)
+                self.objects_info = []
+                self.signal_waiting = False
+                self.red_hold = False
+                self.last_depart_time = time.time()
+                return False
             self.mecanum_pub.publish(Twist())
-            return True # 계속 대기
-
-        # 3) 그 외의 경우 계속 정지 상태 유지
+            return True
+        
+        # 5) 아무 것도 안 보일 경우 최소 대기 시간만큼만 기다렸다가 출발
+        if now > self.signal_deadline:
+            self.get_logger().info("YOLO couldn't detect anything........")
+            self.yolo_stop(delay_s=0.0)
+            self.objects_info = []
+            self.signal_waiting = False
+            self.last_depart_time = time.time()
+            return False
+        
+        # 6) 인식 중에는 계속 정지 유지
         self.mecanum_pub.publish(Twist())
         return True
 
@@ -406,12 +401,6 @@ class SelfDrivingNode(Node):
         start_flag = True
 
         while self.is_running:
-            # 내 노드가 YOLO가 꺼져있다고 생각하면, 들어오는 모든 메시지를 무시
-            if not self._yolo_is_on:
-                # 만약을 위해 여기서 한 번 더 비워주면 더 안전함
-                if self.objects_info:
-                    self.objects_info = []
-            
             time_start = time.time()
             try:
                 image = self.image_queue.get(block=True, timeout=1)
@@ -420,42 +409,37 @@ class SelfDrivingNode(Node):
                     break
                 else:
                     continue
+            
+            if not self._yolo_is_on:
+                if self.objects_info:
+                    self.objects_info = []
 
             # 처음에 '초록불' 신호를 무한정 기다리는 로직
             if start_flag:
-                # 1. YOLO가 꺼져있으면 켭니다.
-                if not self._yolo_is_on:
-                    self.get_logger().info("Waiting for initial GREEN signal to start...")
-                    self.yolo_start()
+                start_flag = False
+                self.get_logger().info("Waiting for initial GREEN signal to start...")
+                self.yolo_start() # 신호를 보기 위해 YOLO를 켭니다.
 
-                # 2. 출발이 예약되지 않은 상태라면 신호를 확인합니다.
-                if self.departure_time == 0.0:
+                while self.is_running: # 초록불을 볼 때까지 무한정 반복
+                    # YOLO가 감지한 객체 목록을 확인합니다.
                     classes = {o.class_name for o in self.objects_info} if self.objects_info else set()
 
                     if 'green' in classes:
-                        self.get_logger().info("Initial GREEN signal detected! Scheduling start.")
-                        self.yolo_stop(delay_s=0.0) # 즉시 YOLO 정지 요청
-                        self.objects_info = []      # 데이터 정리
-                        
-                        delay = 4.0  # 1초 여유 시간
-                        self.departure_time = time.time() + delay # 출발 예약
-                        self.get_logger().info(f"Main driving will commence in {delay} second(s).")
-                    
-                    elif 'red' in classes:
+                        self.get_logger().info("Initial GREEN signal detected! Starting driving.")
+                        # 출발 후에는 신호 감지가 필요 없으므로 1초 뒤에 YOLO를 끕니다.
+                        self.yolo_stop(delay_s=0.0)
+                        self.objects_info = []
+                        break # 무한 반복을 탈출하고 본격적인 주행 시작
+
+                    if 'red' in classes:
                         self.get_logger().info("Initial signal is RED. Waiting...")
 
-                # 3. 출발이 예약된 상태라면 시간이 됐는지 확인합니다.
-                else:
-                    if time.time() >= self.departure_time:
-                        self.get_logger().info("Scheduled start time reached. Commencing driving.")
-                        self.departure_time = 0.0 # 예약 시간 초기화
-                        start_flag = False      # 시작 플래그를 내려서 이 로직을 빠져나감
+                    time.sleep(0.1) # 0.1초마다 신호를 다시 확인
                 
-                # 시작 플래그가 True인 동안에는 0.1초마다 확인하며 대기
-                time.sleep(0.1)
-                continue # 본격 주행 로직을 건너뛰고 다음 메인 루프로 넘어감
+                # 첫 번째 루프는 여기서 끝내고 다음 루프부터 정상 주행 시작
+                continue
 
-            # result_image = image.copy()
+            result_image = image.copy()
             if self.start:
                 h, w = image.shape[:2]
 
@@ -483,7 +467,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.32, 0.50
+                        NEAR, FAR = 0.35, 0.50
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
@@ -609,7 +593,6 @@ class SelfDrivingNode(Node):
             if self.objects_info:
                 self.objects_info = []
             return
-
         self.last_objects_ts = time.time()
         self.objects_info = msg.objects or []
 
@@ -622,5 +605,3 @@ def main():
  
 if __name__ == "__main__":
     main()
-
-    
