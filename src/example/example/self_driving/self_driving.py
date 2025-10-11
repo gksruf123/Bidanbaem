@@ -437,7 +437,7 @@ class SelfDrivingNode(Node):
                         self.yolo_stop(delay_s=0.0) # 즉시 YOLO 정지 요청
                         self.objects_info = []      # 데이터 정리
                         
-                        delay = 2.7  # 1초 여유 시간
+                        delay = 4.0  # 1초 여유 시간
                         self.departure_time = time.time() + delay # 출발 예약
                         self.get_logger().info(f"Main driving will commence in {delay} second(s).")
                     
