@@ -278,10 +278,10 @@ class SelfDrivingNode(Node):
 
         # 1. 0.5초 동안 직진
         self.get_logger().info("Moving straight for 0.5s before turning.")
-        forward_time = 0.5
+        forward_time = 0.6
         t_end_forward = time.time() + forward_time
         while time.time() < t_end_forward and self.is_running:
-            twist.linear.x = 0.7  # 설정된 기본 속도로 직진
+            twist.linear.x = 0.75  # 설정된 기본 속도로 직진
             twist.angular.z = 0.0
             self.mecanum_pub.publish(twist)
             time.sleep(0.02)
@@ -346,7 +346,7 @@ class SelfDrivingNode(Node):
             twist = Twist()
 
             # 1. 주차장 앞까지 직진
-            forward_time = 2.8
+            forward_time = 2.7
             t_end_forward = time.time() + forward_time
             while time.time() < t_end_forward and self.is_running:
                 twist.linear.x = 0.7  # 설정된 기본 속도로 직진
