@@ -144,8 +144,6 @@ class SelfDrivingNode(Node):
             request = SetBool.Request(); request.data = True
             self.set_running_srv_callback(request, SetBool.Response())
 
-        # ⛔️ threading.Thread(target=self.main, daemon=True).start() 삭제
-        # ✅ 타이머를 사용해 main_tick을 주기적으로 실행
         timer_period = 0.05  # 20Hz
         self.main_timer = self.create_timer(timer_period, self.main_tick)
 
@@ -157,7 +155,7 @@ class SelfDrivingNode(Node):
         self.start = False
         self.enter = False
         self.crt_time = time.time()
-        self.start_flag = True # ✅ main_tick에서 사용하기 위해 클래스 속성으로 변경
+        self.start_flag = True
 
         self.park_x = -1
         self.turn_right = False
@@ -306,7 +304,7 @@ class SelfDrivingNode(Node):
 
         if 'green' in classes:
             self.get_logger().info("GREEEEEEN!!!")
-            self.yolo_stop_and_wait() # ✅ 동기 호출로 변경
+            self.yolo_stop_and_wait()
             self.objects_info = []
             self.signal_waiting = False
             self.red_hold = False
@@ -314,7 +312,7 @@ class SelfDrivingNode(Node):
             return False
 
         if 'right' in classes and not self.red_hold:
-            self.yolo_stop_and_wait() # ✅ 동기 호출로 변경
+            self.yolo_stop_and_wait()
             self._do_right_turn()
             self.objects_info = []
             self.signal_waiting = False
@@ -346,7 +344,7 @@ class SelfDrivingNode(Node):
         if self.red_hold:
             self.get_logger().info("WAIT.....")
             if self.max_red_wait and now > (self.signal_deadline + self.max_red_wait):
-                self.yolo_stop_and_wait() # ✅ 동기 호출로 변경
+                self.yolo_stop_and_wait()
                 self.objects_info = []
                 self.signal_waiting = False
                 self.red_hold = False
@@ -357,7 +355,7 @@ class SelfDrivingNode(Node):
 
         if now > self.signal_deadline:
             self.get_logger().info("YOLO couldn't detect anything........")
-            self.yolo_stop_and_wait() # ✅ 동기 호출로 변경
+            self.yolo_stop_and_wait()
             self.objects_info = []
             self.signal_waiting = False
             self.last_depart_time = time.time()
@@ -367,17 +365,13 @@ class SelfDrivingNode(Node):
         return True
 
     def main_tick(self):
-        # 2차 방어: YOLO가 꺼져있을 때 만약의 유령 데이터 제거
+        # 이중 안전장치: YOLO가 꺼져있을 때 유령 데이터 제거
         if not self._yolo_is_on:
             if self.objects_info:
                 self.objects_info = []
-        try:
-            image = self.image_queue.get(block=False)
-        except queue.Empty:
-            return
 
+        # '초기화 단계' 로직
         if self.start_flag:
-            # 초기 출발 신호 대기 로직은 일회성이므로 tick 안에서 관리
             classes = {o.class_name for o in self.objects_info} if self.objects_info else set()
             if 'green' in classes:
                 self.get_logger().info("Initial GREEN signal detected! Starting driving.")
@@ -386,85 +380,91 @@ class SelfDrivingNode(Node):
                     self.start_flag = False
             elif 'red' in classes:
                 self.get_logger().info("Initial signal is RED. Waiting...")
-            return # 본격적인 주행은 다음 tick부터
 
-        if self.start:
-            h, w = image.shape[:2]
-            visual_image, mask_white, mask_yellow = self.lane_detect.get_binary(image.copy())
-            twist = Twist()
-
-            # 1) 벽 회피 로직
-            wall_turning = False
-            with self.lock:
-                depth_m = self.depth_image.copy() if self.depth_image is not None else None
-
-            if depth_m is not None:
-                y0, y1, x0, x1 = int(0.10*h), int(0.50*h), int(0.40*w), int(0.70*w)
-                roi = depth_m[y0:y1, x0:x1]
-                valid = np.isfinite(roi) & (roi > 0.05)
-                if valid.any():
-                    d_min = np.percentile(roi[valid], 10)
-                    alpha = 0.4
-                    d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
-                    self.dmin_ema = d_est
-
-                    NEAR, FAR = 0.35, 0.55
-                    strength = 0.0
-                    if d_est < FAR:
-                        strength = np.clip((FAR - d_est) / max(FAR - NEAR, 1e-6), 0.0, 1.0)
-
-                    now = time.time()
-                    if strength > 0.05:
-                        self.avoid_until = max(self.avoid_until, now + 0.20)
-
-                    if (strength > 0.0) or (now < self.avoid_until):
-                        wall_turning = True
-                        s = strength ** 1.5 if strength > 0.0 else max(self.last_avoid_s * 0.7, 0.15)
-                        self.last_avoid_s = s if strength > 0.0 else self.last_avoid_s * 0.7
-
-                        twist.angular.z = -1.4 - 0.6 * s
-                        v_min, v_max = self.min_wall_speed, self.normal_speed
-                        twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
-                        self.mecanum_pub.publish(twist)
-                        self.get_logger().info("There's a Wall! I'm turning right!")
-                        self.turn_right_count += 1
-                        if self.turn_right_count > 4:
-                            self.turn_right_count = 0
-                            self.stop_flag = True
-
-            if wall_turning:
+        # '본격 주행 단계' 로직
+        else:
+            try:
+                image = self.image_queue.get(block=False)
+            except queue.Empty:
                 return
-            else:
-                self.additional_flag += 1
 
-            # 2) 차선 주행 및 신호 처리 로직
-            status, lane_x = self.lane_detect(mask_white, mask_yellow)
-            x_setpoint = int(self.lane_detect.img_width * 0.20)
+            if self.start:
+                h, w = image.shape[:2]
+                visual_image, mask_white, mask_yellow = self.lane_detect.get_binary(image.copy())
+                twist = Twist()
 
-            if status == "GO_STRAIGHT":
-                self._drive_straight(lane_x, x_setpoint, twist)
-            elif status == "STOP_LINE":
-                now = time.time()
-                if now - self.last_depart_time < self.stop_cooldown:
-                    self._drive_straight(lane_x, x_setpoint, twist)
+                # 1) 벽 회피 로직
+                wall_turning = False
+                with self.lock:
+                    depth_m = self.depth_image.copy() if self.depth_image is not None else None
+
+                if depth_m is not None:
+                    y0, y1, x0, x1 = int(0.10*h), int(0.50*h), int(0.40*w), int(0.70*w)
+                    roi = depth_m[y0:y1, x0:x1]
+                    valid = np.isfinite(roi) & (roi > 0.05)
+                    if valid.any():
+                        d_min = np.percentile(roi[valid], 10)
+                        alpha = 0.4
+                        d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
+                        self.dmin_ema = d_est
+
+                        NEAR, FAR = 0.35, 0.55
+                        strength = 0.0
+                        if d_est < FAR:
+                            strength = np.clip((FAR - d_est) / max(FAR - NEAR, 1e-6), 0.0, 1.0)
+
+                        now = time.time()
+                        if strength > 0.05:
+                            self.avoid_until = max(self.avoid_until, now + 0.20)
+
+                        if (strength > 0.0) or (now < self.avoid_until):
+                            wall_turning = True
+                            s = strength ** 1.5 if strength > 0.0 else max(self.last_avoid_s * 0.7, 0.15)
+                            self.last_avoid_s = s if strength > 0.0 else self.last_avoid_s * 0.7
+
+                            twist.angular.z = -1.4 - 0.6 * s
+                            v_min, v_max = self.min_wall_speed, self.normal_speed
+                            twist.linear.x = v_min + (v_max - v_min) * (1.0 - s)
+                            self.mecanum_pub.publish(twist)
+                            self.get_logger().info("There's a Wall! I'm turning right!")
+                            self.turn_right_count += 1
+                            if self.turn_right_count > 4:
+                                self.turn_right_count = 0
+                                self.stop_flag = True
+
+                if wall_turning:
                     return
+                else:
+                    self.additional_flag += 1
 
-                if self.signal_waiting:
-                    if not self._tick_signal_wait(): # False를 반환하면 대기 종료
+                # 2) 차선 주행 및 신호 처리 로직
+                status, lane_x = self.lane_detect(mask_white, mask_yellow)
+                x_setpoint = int(self.lane_detect.img_width * 0.20)
+
+                if status == "GO_STRAIGHT":
+                    self._drive_straight(lane_x, x_setpoint, twist)
+                elif status == "STOP_LINE":
+                    now = time.time()
+                    if now - self.last_depart_time < self.stop_cooldown:
                         self._drive_straight(lane_x, x_setpoint, twist)
-                elif self.stop_flag and self.additional_flag > 2:
-                    self.get_logger().info("start a detection!!!!")
-                    self.stop_flag = False
-                    self.additional_flag = 0
-                    self.mecanum_pub.publish(Twist())
-                    self._enter_signal_wait()
-            elif status is None:
-                twist.linear.x = self.normal_speed
-                twist.angular.z = 0.5
-                self.mecanum_pub.publish(twist)
-                self.get_logger().info("there isn't lane_x")
-            else:
-                self.pid.clear()
+                        return
+
+                    if self.signal_waiting:
+                        if not self._tick_signal_wait(): # False를 반환하면 대기 종료
+                            self._drive_straight(lane_x, x_setpoint, twist)
+                    elif self.stop_flag and self.additional_flag > 2:
+                        self.get_logger().info("start a detection!!!!")
+                        self.stop_flag = False
+                        self.additional_flag = 0
+                        self.mecanum_pub.publish(Twist())
+                        self._enter_signal_wait()
+                elif status is None:
+                    twist.linear.x = self.normal_speed
+                    twist.angular.z = 0.5
+                    self.mecanum_pub.publish(twist)
+                    self.get_logger().info("there isn't lane_x")
+                else:
+                    self.pid.clear()
 
     def get_object_callback(self, msg):
         # 1차 방어: YOLO가 꺼져있다고 생각하면, 들어오는 모든 메시지를 무시
@@ -475,6 +475,7 @@ class SelfDrivingNode(Node):
         self.objects_info = msg.objects or []
 
 def main():
+    rclpy.init()
     node = SelfDrivingNode('self_driving')
     executor = MultiThreadedExecutor()
     executor.add_node(node)
@@ -483,6 +484,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        executor.shutdown()
         node.destroy_node()
         rclpy.shutdown()
 
