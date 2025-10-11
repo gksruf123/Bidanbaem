@@ -278,7 +278,7 @@ class SelfDrivingNode(Node):
 
         # 1. 0.5초 동안 직진
         self.get_logger().info("Moving straight for 0.5s before turning.")
-        forward_time = 0.7
+        forward_time = 0.8
         t_end_forward = time.time() + forward_time
         while time.time() < t_end_forward and self.is_running:
             twist.linear.x = 0.75  # 설정된 기본 속도로 직진
