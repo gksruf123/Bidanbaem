@@ -392,7 +392,7 @@ class SelfDrivingNode(Node):
         if should_depart:
             self.yolo_stop(delay_s=0.0) # 즉시 YOLO 정지 요청
             self.objects_info = []      # 유령 데이터가 다음 예약 확인에 영향 주지 않도록 즉시 비움
-            delay = 1.5  # 1초의 여유 시간 설정
+            delay = 2.0  # 1초의 여유 시간 설정
             self.departure_time = now + delay
             self.get_logger().info(f"Departure scheduled in {delay} second(s).")
             self.mecanum_pub.publish(Twist())
@@ -437,7 +437,7 @@ class SelfDrivingNode(Node):
                         self.yolo_stop(delay_s=0.0) # 즉시 YOLO 정지 요청
                         self.objects_info = []      # 데이터 정리
                         
-                        delay = 1.5  # 1초 여유 시간
+                        delay = 2.0  # 1초 여유 시간
                         self.departure_time = time.time() + delay # 출발 예약
                         self.get_logger().info(f"Main driving will commence in {delay} second(s).")
                     
