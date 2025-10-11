@@ -141,7 +141,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.95  # normal driving speed
+        self.normal_speed = 0.90  # normal driving speed
         self.slow_down_speed = 0.0  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -483,7 +483,7 @@ class SelfDrivingNode(Node):
                         d_est = d_min if self.dmin_ema is None else (1 - alpha) * self.dmin_ema + alpha * d_min
                         self.dmin_ema = d_est
 
-                        NEAR, FAR = 0.35, 0.52
+                        NEAR, FAR = 0.35, 0.55
                         if d_est < FAR:
                             strength = (FAR - d_est) / max(FAR - NEAR, 1e-6)
                             strength = float(np.clip(strength, 0.0, 1.0))
