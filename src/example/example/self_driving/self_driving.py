@@ -141,7 +141,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.6  # normal driving speed
+        self.normal_speed = 0.8  # normal driving speed
         self.slow_down_speed = 0.0  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -278,10 +278,10 @@ class SelfDrivingNode(Node):
 
         # 1. 0.5초 동안 직진
         self.get_logger().info("Moving straight for 0.5s before turning.")
-        forward_time = 0.4
+        forward_time = 0.5
         t_end_forward = time.time() + forward_time
         while time.time() < t_end_forward and self.is_running:
-            twist.linear.x = 0.6  # 설정된 기본 속도로 직진
+            twist.linear.x = 0.7  # 설정된 기본 속도로 직진
             twist.angular.z = 0.0
             self.mecanum_pub.publish(twist)
             time.sleep(0.02)
@@ -346,7 +346,7 @@ class SelfDrivingNode(Node):
             twist = Twist()
 
             # 1. 주차장 앞까지 직진
-            forward_time = 3.0
+            forward_time = 2.8
             t_end_forward = time.time() + forward_time
             while time.time() < t_end_forward and self.is_running:
                 twist.linear.x = 0.7  # 설정된 기본 속도로 직진
