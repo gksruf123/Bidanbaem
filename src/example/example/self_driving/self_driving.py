@@ -141,7 +141,7 @@ class SelfDrivingNode(Node):
         self.park_x = -1  # obtain the x-pixel coordinate of a parking sign
         self.turn_right = False  # right turning sign
 
-        self.normal_speed = 0.55  # normal driving speed
+        self.normal_speed = 0.50  # normal driving speed
         self.slow_down_speed = 0.0  # slowing down speed
 
         self.traffic_signs_status = None  # record the state of the traffic lights
@@ -281,14 +281,14 @@ class SelfDrivingNode(Node):
         forward_time = 0.8
         t_end_forward = time.time() + forward_time
         while time.time() < t_end_forward and self.is_running:
-            twist.linear.x = 0.75  # 설정된 기본 속도로 직진
+            twist.linear.x = 0.7  # 설정된 기본 속도로 직진
             twist.angular.z = 0.0
             self.mecanum_pub.publish(twist)
             time.sleep(0.02)
 
         # 2. 0.8초 동안 제자리에서 우회전 (원래 코드)
         self.get_logger().info("Turning right for 0.8s.")
-        turn_time = 0.9
+        turn_time = 0.8
         t_end_turn = time.time() + turn_time
         while time.time() < t_end_turn and self.is_running:
             twist.linear.x = 0.0
