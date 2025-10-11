@@ -545,6 +545,8 @@ class SelfDrivingNode(Node):
                             if self._tick_signal_wait():
                                 continue
                             # 인식 끝나면 라인팔로우 복귀
+                            self.yolo_stop(delay_s=0.0)
+                            self.objects_info = []                            
                             self._drive_straight(lane_x, x_setpoint, twist)
                             continue
 
