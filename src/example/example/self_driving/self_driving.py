@@ -401,6 +401,12 @@ class SelfDrivingNode(Node):
         start_flag = True
 
         while self.is_running:
+            # 내 노드가 YOLO가 꺼져있다고 생각하면, 들어오는 모든 메시지를 무시
+            if not self._yolo_is_on:
+                # 만약을 위해 여기서 한 번 더 비워주면 더 안전함
+                if self.objects_info:
+                    self.objects_info = []
+            
             time_start = time.time()
             try:
                 image = self.image_queue.get(block=True, timeout=1)
@@ -583,6 +589,13 @@ class SelfDrivingNode(Node):
 
     # Obtain the target detection result
     def get_object_callback(self, msg):
+        # 내 노드가 YOLO가 꺼져있다고 생각하면, 들어오는 모든 메시지를 무시
+        if not self._yolo_is_on:
+            # 만약을 위해 여기서 한 번 더 비워주면 더 안전함
+            if self.objects_info:
+                self.objects_info = []
+            return
+
         self.last_objects_ts = time.time()
         self.objects_info = msg.objects or []
 
