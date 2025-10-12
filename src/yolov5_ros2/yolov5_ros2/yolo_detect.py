@@ -260,15 +260,21 @@ class YoloV5Ros2(Node):
         return response
 
     def stop_srv_callback(self, request, response):
-        if time.time() - self.time > 0.25:
-            self.time = time.time()
-            self.get_logger().info('\033[1;32m%s\033[0m' % "stop yolov5 detect (onnx)")
-            self.start = False
-            response.success = True
-            response.message = "stop"
-        else:
-            response.success = False
-            response.message = "fail"
+        # if time.time() - self.time > 0.25:
+        #     self.time = time.time()
+        #     self.get_logger().info('\033[1;32m%s\033[0m' % "stop yolov5 detect (onnx)")
+        #     self.start = False
+        #     response.success = True
+        #     response.message = "stop"
+        # else:
+        #     response.success = False
+        #     response.message = "fail"
+            
+        self.time = time.time()
+        self.get_logger().info('\033[1;32m%s\033[0m' % "stop yolov5 detect (onnx)")
+        self.start = False
+        response.success = True
+        response.message = "stop"
         return response
 
     def image_callback(self, rgb_msg):

@@ -9,8 +9,8 @@ class SmoothCmdVel(Node):
 
         # ✅ 파라미터 (필요하면 launch에서 바꿀 수 있음)
         self.declare_parameter('rate_hz', 30.0)
-        self.declare_parameter('max_accel_linear', 2.4)   # m/s²
-        self.declare_parameter('max_accel_angular', 4.5)  # rad/s²
+        self.declare_parameter('max_accel_linear', 2.4 * 1.0)   # m/s²
+        self.declare_parameter('max_accel_angular', 4.5 * 2.5)  # rad/s²
 
 
         # ✅ 파라미터 로드
@@ -41,6 +41,8 @@ class SmoothCmdVel(Node):
 
         # ---- 선속도 (linear.x) ----
         diff_linear = self.target_twist.linear.x - self.current_twist.linear.x
+        # if diff_linear < 0:
+        #     diff_linear *= 1.5
         max_delta_lin = self.max_accel_linear * dt
         diff_linear = max(-max_delta_lin, min(max_delta_lin, diff_linear))
         self.current_twist.linear.x += diff_linear
