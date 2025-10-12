@@ -521,7 +521,7 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(Twist())
                             continue
                         if left_lane_x >= 0 and not self.stop:
-                            self.pid.SetPoint = 100  # the coordinate of the line while the robot is in the middle of the lane
+                            self.pid.SetPoint = 75  # the coordinate of the line while the robot is in the middle of the lane
                             self.pid.update(left_lane_x)
                             if self.machine_type != 'MentorPi_Acker':
                                 twist.angular.z = common.set_range(self.pid.output, -self.line_angular_z, self.line_angular_z)
@@ -552,7 +552,7 @@ class SelfDrivingNode(Node):
                         self.get_logger().info(f"\033[1;31minitial degree: {self.basis_turn_point}, cur degree: {self.degree}\033[0m")
                         if self.real_turn_right:
                             self.real_turn_right = False
-                            if abs((self.basis_turn_point - self.degree + 180) % 360 - 180) > 80:
+                            if abs((self.basis_turn_point - self.degree + 180) % 360 - 180) > 82:
                                 self.get_logger().info("turn was finished~~~~~~~~~~~~~~")
                                 self.turn_finish = True
                                 self.mecanum_pub.publish(Twist())
@@ -703,7 +703,8 @@ class SelfDrivingNode(Node):
                             self.detected_park = True
                             self.park_distance = obj_distance
                         elif class_name == 'red':
-                            if obj_distance < 800:
+                            self.get_logger().info(f"~~~~~~red distance: {obj_distance}")
+                            if obj_distance < 1100:
                                 self.traffic_signs_status = 'red'
                                 self.sign_distance = obj_distance
                         elif class_name == 'green':  # obtain the status of the traffic light
