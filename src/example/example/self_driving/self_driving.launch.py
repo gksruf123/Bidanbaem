@@ -42,13 +42,13 @@ def launch_setup(context):
         output='screen',
         parameters=[{'classes': ['go', 'right', 'park', 'red', 'green', 'crosswalk']},
             {"device": "cpu",
-            "model": "new_model",
+            "model": "floor_right_640",
             "image_topic": "/ascamera/camera_publisher/rgb0/image",
             "camera_info_topic": "/camera/camera_info",
             "camera_info_file": f"{package_share_directory}/config/camera_info.yaml",
             # "show_result": True,
             "pub_result_img": True,
-            "conf_thres": 0.30,
+            "conf_thres": 0.40,
             "iou_thres": 0.45,
             "img_size": 640}]
     )

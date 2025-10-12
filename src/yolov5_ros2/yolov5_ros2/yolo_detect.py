@@ -220,7 +220,7 @@ class YoloV5Ros2(Node):
 
         # Subscriber
         image_topic = self.get_parameter('image_topic').value
-        self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 10)
+        self.image_sub = self.create_subscription(Image, image_topic, self.image_callback, 1)
     
         # # QoS 프로필 정의
         # qos_profile = QoSProfile(

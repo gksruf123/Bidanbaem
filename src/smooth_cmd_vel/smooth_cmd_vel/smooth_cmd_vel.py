@@ -27,7 +27,7 @@ class SmoothCmdVel(Node):
         self.cmd_pub = self.create_publisher(Twist, '/controller/cmd_vel', 10)
 
         # ✅ 주기적 타이머 (velocity smoothing loop)
-        self.create_timer(0.5 / self.rate_hz, self.update_velocity)
+        self.create_timer(1 / self.rate_hz, self.update_velocity)
 
         self.get_logger().info("✅ [smooth_cmd_vel] Node started (rate: %.1f Hz)" % self.rate_hz)
 

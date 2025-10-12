@@ -177,16 +177,18 @@ class SelfDrivingNode(Node):
 
     def button_callback(self, msg):
         self.is_start = False
+        # self.depth_detect = True
         self.button_pressed = True
         self.get_logger().info(f"[Button] pressed")
 
     def call_start(self):
         self.wait_can_finish = False
         self.detect = True
-        self.depth_detect = True
         req = Trigger.Request()
         future = self.start_yolov5_client.call_async(req)
         future.add_done_callback(self._on_start_response)
+        time.sleep(0.3)
+        self.depth_detect = True
     
     def _on_start_response(self, future):
         try:
@@ -333,7 +335,7 @@ class SelfDrivingNode(Node):
         self.mecanum_pub.publish(Twist())
 
     def main(self):
-        first_fence = True
+        # first_fence = True
         while self.is_running:
             time_start = time.time()
             try:
@@ -448,6 +450,7 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(Twist())
                         self.publisher_.publish(led_msg)
                         self.get_logger().info(f"\033[1;32mturn is done call_start\033[0m")
+                        time.sleep(0.4)
                         self.call_start()
                         continue
 
@@ -456,12 +459,11 @@ class SelfDrivingNode(Node):
                         twist.linear.x = self.slow_go_linear_x
                         if self.start_count == 0:
                             self.get_logger().info(f"\033[1;31mdetected right: {self.detected_right}, detected: {self.detected_cw}\033[0m")
-                            if self. real_turn_right:
+                            if self.real_turn_right:
                                 self.go_cw = False
                                 self.turn_right = True
                                 self.start_dist = self.cw_distance
-                                self.real_turn_right = False
-                                self.mul = 0.8
+                                self.mul = 1.3
                                 self.get_logger().info(f"\033[1;31m3. cross_walk distance: {self.start_dist}\033[0m")
                             elif self.detected_right and self.detected_cw:
                                 self.go_cw = False
@@ -483,11 +485,12 @@ class SelfDrivingNode(Node):
                                 self.go_cw = True
                                 self.turn_right = True
                                 self.start_dist = self.fence_distance
-                                if first_fence:
-                                    self.mul = 0.8
-                                    first_fence = False
-                                else:
-                                    self.mul = 1.1
+                                self.mul = -1.0
+                                # if first_fence:
+                                #     self.mul = 0.8
+                                #     first_fence = False
+                                # else:
+                                #     self.mul = 1.1
                                 self.get_logger().info(f"\033[1;31mfence distance: {self.start_dist}\033[0m")
                             else:
                                 self.get_logger().info("RED-RED-RED-RED-RED-RED-RED-RED")
@@ -503,7 +506,7 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(Twist())
                             continue
                         if left_lane_x >= 0 and not self.stop:
-                            self.pid.SetPoint = 200  # the coordinate of the line while the robot is in the middle of the lane
+                            self.pid.SetPoint = 100  # the coordinate of the line while the robot is in the middle of the lane
                             self.pid.update(left_lane_x)
                             if self.machine_type != 'MentorPi_Acker':
                                 twist.angular.z = common.set_range(self.pid.output, -0.2, 0.2)
@@ -532,11 +535,19 @@ class SelfDrivingNode(Node):
                             self.basis_turn_point = self.degree      # 현재 기준 시작 각도 지정
                         
                         self.get_logger().info(f"\033[1;31minitial degree: {self.basis_turn_point}, cur degree: {self.degree}\033[0m")
-                        if abs((self.basis_turn_point - self.degree + 180) % 360 - 180) > 80:
-                            self.get_logger().info("turn was finished~~~~~~~~~~~~~~")
-                            self.turn_finish = True
-                            self.mecanum_pub.publish(Twist())
-                            continue
+                        if self.real_turn_right:
+                            self.real_turn_right = False
+                            if abs((self.basis_turn_point - self.degree + 180) % 360 - 180) > 86:
+                                self.get_logger().info("turn was finished~~~~~~~~~~~~~~")
+                                self.turn_finish = True
+                                self.mecanum_pub.publish(Twist())
+                                continue
+                        else:
+                            if abs((self.basis_turn_point - self.degree + 180) % 360 - 180) > 80:
+                                self.get_logger().info("turn was finished~~~~~~~~~~~~~~")
+                                self.turn_finish = True
+                                self.mecanum_pub.publish(Twist())
+                                continue
                         
                     if self.stop:
                         self.get_logger().info("\033[1;31mstate: **stop**\033[0m")
@@ -631,6 +642,7 @@ class SelfDrivingNode(Node):
                 self.detected_go = False
                 self.detected_right = False
                 self.detected_park = False
+                # if self.objects_info == [] or self.depth is None:  # If it is not recognized, reset the variable
                 if self.objects_info == []:  # If it is not recognized, reset the variable
                     self.traffic_signs_status = None
                     self.cw_distance = -1
@@ -652,8 +664,9 @@ class SelfDrivingNode(Node):
                         class_name = i.class_name
                         center = (int((i.box[0] + i.box[2])/2), int((i.box[1] + i.box[3])/2))
                         obj_distance = self.depth[center[1], center[0]]
-                        self.fence_distance = self.depth[10, 320]
+                        # self.fence_distance = self.depth[10, 320]
                         class_set.add(class_name)
+                        self.get_logger().info(f"\033[1;32mdetected class = {class_name}, distance: {obj_distance}\033[0m")
                         
                         if class_name == 'crosswalk':
                             self.detected_cw = True
@@ -680,8 +693,11 @@ class SelfDrivingNode(Node):
                             self.traffic_signs_status = 'green'
                             self.sign_distance = obj_distance
                             self.is_start = True
+                        elif class_name == 'floor_right':
+                            self.fence_distance = obj_distance
 
                     self.wait_can_finish = True
+                    # self.depth = None
                     self.get_logger().info(f"\033[1;32mdetect something!!!!\033[0m")
 
 def main():
