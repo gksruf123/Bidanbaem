@@ -493,7 +493,7 @@ class SelfDrivingNode(Node):
                                 self.go_cw = False
                                 self.real_turn_right = True
                                 self.start_dist = self.cw_distance
-                                self.mul = 1.6 + self.global_mul
+                                self.mul = 2.1 + self.global_mul
                                 self.max_cw_dist = True
                                 self.get_logger().info(
                                     f"\033[1;31m2. cross_walk distance: {self.start_dist}\033[0m"
@@ -508,11 +508,11 @@ class SelfDrivingNode(Node):
                                 self.go_cw = False
                                 self.start_dist = self.cw_distance
                                 if cw_count < 1:
-                                    self.mul = 1.5 + self.global_mul
+                                    self.mul = 1.8 + self.global_mul
                                 elif cw_count < 2:
                                     self.mul = 2.2 + self.global_mul
                                 elif cw_count < 3:
-                                    self.mul = 1.5 + self.global_mul
+                                    self.mul = 1.75 + self.global_mul
                                 elif cw_count < 4:
                                     self.mul = 0.8 + self.global_mul
                                 else:
@@ -525,7 +525,7 @@ class SelfDrivingNode(Node):
                                 self.go_cw = True
                                 self.turn_right = True
                                 self.start_dist = self.fence_distance
-                                self.mul = -1.0 + self.global_mul
+                                self.mul = -0.5 + self.global_mul
                                 self.get_logger().info(
                                     f"\033[1;31mfence distance: {self.start_dist}\033[0m"
                                 )
