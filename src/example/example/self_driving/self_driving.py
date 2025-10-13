@@ -405,7 +405,6 @@ class SelfDrivingNode(Node):
 
             result_image = image.copy()
             if self.running:
-                h, w = image.shape[:2]
                 binary_image = self.lane_detect.get_binary(image)
                 twist = Twist()
 
@@ -622,12 +621,7 @@ class SelfDrivingNode(Node):
         self.publish_twist(0, 0, 0)
         rclpy.shutdown()
 
-    # ---------------------- Detection callback ----------------------
-    def get_object_callback(self, msg: ObjectsInfo):
-        self.objects_info = msg.objects
-        if not self.detect:
-            return
-
+    def init_object_status(self):
         # Reset defaults
         self.traffic_signs_status = None
         self.cw_distance = -1 if not self.max_cw_dist else 0
@@ -638,6 +632,14 @@ class SelfDrivingNode(Node):
         self.detected_go = False
         self.detected_right = False
         self.detected_park = False
+
+    # ---------------------- Detection callback ----------------------
+    def get_object_callback(self, msg: ObjectsInfo):
+        self.objects_info = msg.objects
+        if not self.detect:
+            return
+
+        self.init_object_status()
 
         if not self.objects_info:
             return
