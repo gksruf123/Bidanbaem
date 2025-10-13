@@ -53,6 +53,8 @@ class SmoothCmdVel(Node):
         diff_angular = max(-max_delta_ang, min(max_delta_ang, diff_angular))
         self.current_twist.angular.z += diff_angular
 
+        self.current_twist.linear.y = self.target_twist.linear.y
+
         # ---- 퍼블리시 ----
         self.cmd_pub.publish(self.current_twist)
 

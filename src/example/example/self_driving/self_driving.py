@@ -393,6 +393,7 @@ class SelfDrivingNode(Node):
     # ---------------------- Main loop ----------------------
     def main(self):
         cw_count = 0
+        
         while self.is_running:
             time_start = time.time()
             try:
@@ -416,6 +417,7 @@ class SelfDrivingNode(Node):
                     if self.go_finish and self.turn_finish:
                         if self.wait:
                             if time.time() - self.stop_time > 1.0 and self.wait_can_finish:
+                            # if self.wait_can_finish:
                                 if self.traffic_signs_status != "red":
                                     self.wait = False
                                     self.start = True
@@ -460,7 +462,7 @@ class SelfDrivingNode(Node):
                     if self.wait:
                         self.get_logger().info("\033[1;31mstate: **wait**\033[0m")
                         twist.linear.x = 0.0
-                        if left_lane_x == -1:
+                        if left_lane_x == -1 and self.traffic_signs_status != 'red':
                             twist.angular.z = 0.15
                             self.mecanum_pub.publish(twist)
                         else:
@@ -497,7 +499,7 @@ class SelfDrivingNode(Node):
                                 )
                             elif self.detected_park:
                                 self.start_dist = self.park_distance
-                                self.mul = 1.4 + self.global_mul
+                                self.mul = 0.9 + self.global_mul
                                 self.get_logger().info(
                                     f"\033[1;31mpark distance: {self.start_dist}\033[0m"
                                 )
@@ -570,29 +572,32 @@ class SelfDrivingNode(Node):
 
                     if self.stop:
                         self.get_logger().info("\033[1;31mstate: **stop**\033[0m")
-                        if self.stop_turn:
-                            twist.linear.x = 0.0
-                            twist.angular.z = self.park_turn_angular_z
-                            if self.turn_count == 0:
-                                self.turn_count += 1
-                                self.basis_turn_point = self.degree
-                            self.get_logger().info(
-                                f"\033[1;31minitial degree: {self.basis_turn_point}, cur degree: {self.degree}\033[0m"
-                            )
-                            if self._finish_turn_if_reached(80):
-                                self.stop_go = True
-                                self.stop_turn = False
-                                self.stop_time = time.time()
-                        elif self.stop_go:
-                            if time.time() - self.stop_time < 1:
-                                twist.linear.x = 0.5
-                                twist.angular.z = 0.0
-                            else:
-                                self.stop_go = False
-                        else:
-                            self.publish_twist(0, 0, 0)
-                            self.is_start = False
-                            self.set_gpio_leds(green="blink", red="blink", left="blink", right="blink")
+                        # if self.stop_turn:
+                        #     twist.linear.x = 0.0
+                        #     twist.angular.z = self.park_turn_angular_z
+                        #     if self.turn_count == 0:
+                        #         self.turn_count += 1
+                        #         self.basis_turn_point = self.degree
+                        #     self.get_logger().info(
+                        #         f"\033[1;31minitial degree: {self.basis_turn_point}, cur degree: {self.degree}\033[0m"
+                        #     )
+                        #     if self._finish_turn_if_reached(80):
+                        #         self.stop_go = True
+                        #         self.stop_turn = False
+                        #         self.stop_time = time.time()
+                        # elif self.stop_go:
+                        #     if time.time() - self.stop_time < 1:
+                        #         twist.linear.x = 0.5
+                        #         twist.angular.z = 0.0
+                        #     else:
+                        #         self.stop_go = False
+                        # else:
+                        #     self.publish_twist(0, 0, 0)
+                        self.publish_twist(0, -1.0, 0)
+                        time.sleep(0.7)
+                        self.publish_twist(0, 0, 0)
+                        self.is_start = False
+                        self.set_gpio_leds(green="blink", red="blink", left="blink", right="blink")
 
                     self.get_logger().info(
                         f"\033[1;32mx: {twist.linear.x}, y: {twist.linear.y}, z: {twist.angular.z}\033[0m"
