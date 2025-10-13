@@ -108,10 +108,10 @@ class SelfDrivingNode(Node):
         self.start_dist = 0
 
         # Tunables
-        self.go_linear_x = 1.0
-        self.global_mul = 0.2
+        self.go_linear_x = 1.2
+        self.global_mul = 0.55
         self.turn_angular_z = -1.0
-        self.line_angular_z = 0.20
+        self.line_angular_z = 0.22
         self.park_turn_angular_z = -1.0
         self.park_linear_y = -0.5
         self.stop_time = time.time()
@@ -467,6 +467,7 @@ class SelfDrivingNode(Node):
                             self.mecanum_pub.publish(twist)
                         else:
                             self.publish_twist(0, 0, 0)
+                        # self.publish_twist(0, 0, 0)
                         self._rgb_publish()
                         self.get_logger().info("\033[1;32mturn is done call_start\033[0m")
                         time.sleep(0.4)
@@ -499,7 +500,7 @@ class SelfDrivingNode(Node):
                                 )
                             elif self.detected_park:
                                 self.start_dist = self.park_distance
-                                self.mul = 0.9 + self.global_mul
+                                self.mul = 1.15 + self.global_mul
                                 self.get_logger().info(
                                     f"\033[1;31mpark distance: {self.start_dist}\033[0m"
                                 )

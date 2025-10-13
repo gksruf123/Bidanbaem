@@ -42,7 +42,7 @@ def launch_setup(context):
         output='screen',
         parameters=[{'classes': ['go', 'right', 'park', 'red', 'green', 'crosswalk']},
             {"device": "cpu",
-            "model": "floor_right_352",
+            "model": "floor_right_384",
             "image_topic": "/ascamera/camera_publisher/rgb0/image",
             "camera_info_topic": "/camera/camera_info",
             "camera_info_file": f"{package_share_directory}/config/camera_info.yaml",
@@ -50,7 +50,7 @@ def launch_setup(context):
             "pub_result_img": True,
             "conf_thres": 0.40,
             "iou_thres": 0.45,
-            "img_size": 352}]
+            "img_size": 384}]
     )
 
     self_driving_node = Node(
