@@ -42,12 +42,15 @@ def launch_setup(context):
         output='screen',
         parameters=[{'classes': ['go', 'right', 'park', 'red', 'green', 'crosswalk']},
             {"device": "cpu",
-            "model": "best",
+            "model": "floor_right_384",
             "image_topic": "/ascamera/camera_publisher/rgb0/image",
             "camera_info_topic": "/camera/camera_info",
             "camera_info_file": f"{package_share_directory}/config/camera_info.yaml",
             # "show_result": True,
-            "pub_result_img": True}]
+            "pub_result_img": True,
+            "conf_thres": 0.40,
+            "iou_thres": 0.45,
+            "img_size": 384}]
     )
 
     self_driving_node = Node(
@@ -57,6 +60,13 @@ def launch_setup(context):
         parameters=[{'start': start}, {'only_line_follow': only_line_follow}],
     )
 
+    smooth_cmd_vel_node = Node(
+        package='smooth_cmd_vel',
+        executable='smooth_cmd_vel',
+        output='screen',
+    )
+
+
     return [start_arg,
             only_line_follow_arg,
             depth_camera_launch,
@@ -64,6 +74,7 @@ def launch_setup(context):
             #web_video_server_node,
             yolov5_node, 
             self_driving_node,
+            smooth_cmd_vel_node,
             ]
 
 def generate_launch_description():

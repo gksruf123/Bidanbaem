@@ -14,7 +14,13 @@ from cv_bridge import CvBridge
 
 bridge = CvBridge()
 
-lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
+# lab_data = common.get_yaml_data("/home/ubuntu/software/lab_tool/lab_config.yaml")
+username = os.getenv("USER")  # 현재 로그인한 사용자 이름 가져오기
+if username == "ubuntu":  # 라즈베리파이
+    config_path = "/home/ubuntu/software/lab_tool/lab_config.yaml"
+else:  # 내 PC (intel 사용자)
+    config_path = "/home/intel/Study/mid_competition/Bidanbaem/software/lab_tool/lab_config.yaml"
+lab_data = common.get_yaml_data(config_path)
 
 class LaneDetector(object):
     def __init__(self, color):
@@ -22,13 +28,22 @@ class LaneDetector(object):
         self.target_color = color
         # ROI for lane detection
         if os.environ['DEPTH_CAMERA_TYPE'] == 'ascamera':
-            self.rois = ((338, 360, 0, 320, 0.7), (292, 315, 0, 320, 0.2), (248, 270, 0, 320, 0.1))
+            self.left_lane_rois = (
+                (338, 360, 0, 320, 0.7),
+                (292, 315, 0, 275, 0.2),
+                (248, 270, 0, 230, 0.1)
+            )
+            self.right_lane_rois = (
+                (338, 360, 320, 640, 0.7),
+                (292, 315, 320, 640, 0.2),
+                (248, 270, 320, 640, 0.1)
+            )
+            self.turn_rois = ((200, 480, 300, 320, 0.0),)
         else:
-            self.rois = ((450, 480, 0, 320, 0.7), (390, 480, 0, 320, 0.2), (330, 480, 0, 320, 0.1))
-        self.weight_sum = 1.0
+            self.left_lane_rois = ((450, 480, 0, 320, 0.7), (390, 480, 0, 320, 0.2), (330, 480, 0, 320, 0.1))
 
-    def set_roi(self, roi):
-        self.rois = roi
+    # def set_roi(self, roi):
+    #     self.rois = roi 
 
     @staticmethod
     def get_area_max_contour(contours, threshold=100):
@@ -129,14 +144,9 @@ class LaneDetector(object):
         dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # dilate
 
         return dilated
-
-    def __call__(self, image, result_image):
-        # extract the center point based on the proportion
-        centroid_sum = 0
-        h, w = image.shape[:2]
-        max_center_x = -1
-        center_x = []
-        for roi in self.rois:
+    
+    def get_center_x(self, image, result_image, rois, lane_center_x: list):
+        for roi in rois:
             blob = image[roi[0]:roi[1], roi[2]:roi[3]]  # crop ROI
             contours = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_L1)[-2]  # find contours
             max_contour_area = self.get_area_max_contour(contours, 30)  # obtain the contour with the largest area
@@ -154,20 +164,41 @@ class LaneDetector(object):
                 line_center_x, line_center_y = (pt1_x + pt3_x) / 2, (pt1_y + pt3_y) / 2
 
                 cv2.circle(result_image, (int(line_center_x), int(line_center_y)), 5, (0, 0, 255), -1)  # draw the center point
-                center_x.append(line_center_x)
+                lane_center_x.append(line_center_x)
             else:
-                center_x.append(-1)
-        for i in range(len(center_x)):
-            if center_x[i] != -1:
-                if center_x[i] > max_center_x:
-                    max_center_x = center_x[i]
-                centroid_sum += center_x[i] * self.rois[i][-1]
-        if centroid_sum == 0:
-            return result_image, None, max_center_x
-        center_pos = centroid_sum / self.weight_sum  # calculate the center point based on the proportion
-        angle = math.degrees(-math.atan((center_pos - (w / 2.0)) / (h / 2.0)))
+                lane_center_x.append(-1)
+        return result_image
+    
+    def get_max_lane_x(self, n, lane_center_x):
+        max_center_x = -1
+        for i in range(n):
+            if lane_center_x[i] != -1:
+                if lane_center_x[i] > max_center_x:
+                    max_center_x = lane_center_x[i]
+        return max_center_x
+    
+    def get_min_lane_x(self, n, lane_center_x):
+        min_center_x = 641
+        for i in range(n):
+            if lane_center_x[i] != -1:
+                if lane_center_x[i] < min_center_x:
+                    min_center_x = lane_center_x[i]
+        return min_center_x
+
+    def __call__(self, image, result_image):
+        # extract the center point based on the proportion
+        h, w = image.shape[:2]
+        line_mid_center_x = -1
+        left_lane_center_x = []
+        right_lane_center_x = []
+        center_lane_center_x = []
+        turn_right = False
+        result_image = self.get_center_x(image, result_image, self.left_lane_rois, left_lane_center_x)
+        left_max_center_x = self.get_max_lane_x(len(left_lane_center_x), left_lane_center_x)
+        result_image = self.get_center_x(image, result_image, self.turn_rois, center_lane_center_x)
+        turn_right = center_lane_center_x[0] != -1
         
-        return result_image, angle, max_center_x
+        return result_image, left_max_center_x, turn_right
 
 image_queue = queue.Queue(2)
 def image_callback(ros_image):

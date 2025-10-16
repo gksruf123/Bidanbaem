@@ -5,8 +5,8 @@ from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
-    max_linear = LaunchConfiguration('max_linear', default='0.5')
-    max_angular = LaunchConfiguration('max_angular', default='2.0')
+    max_linear = LaunchConfiguration('max_linear', default='1.5')
+    max_angular = LaunchConfiguration('max_angular', default='6.0')
     remap_cmd_vel = LaunchConfiguration('remap_cmd_vel', default='controller/cmd_vel')
 
     max_linear_arg = DeclareLaunchArgument(
